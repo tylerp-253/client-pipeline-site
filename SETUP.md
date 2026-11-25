@@ -58,6 +58,15 @@ Supabase's built-in email only delivers to members of your Supabase team and is 
 
 Until this is done you can still sign in yourself, as long as your email is a member of your Supabase organization.
 
+### Notification emails
+
+Two emails go out through the same Resend account, each at most once per person:
+
+- To **me@tylerpigott.com** when someone new requests access, with a link to the Admin tab.
+- To **the person** when you approve them in the Admin tab, with a link to sign in and choose a plan. Replies go to me@tylerpigott.com.
+
+Approving someone directly in SQL doesn't send the welcome email; approve from the Admin tab.
+
 ## 5. Make yourself the admin
 
 1. Connect the app first (section 9) so you can open it, then sign in at `APP_URL` with your email. You'll land on "You're on the list".
@@ -109,10 +118,13 @@ In Supabase, **Edge Functions > Secrets**, add:
 | `ALLOWED_ORIGIN` | `https://tylerp-253.github.io` (optional, locks the functions to your site) |
 | `AI_DAILY_LIMIT` | optional, defaults to `150` |
 | `ANTHROPIC_MODEL` | optional, defaults to `claude-sonnet-5-5` |
+| `RESEND_API_KEY` | your Resend API key from step 4 (sends the two notification emails) |
+| `NOTIFY_FROM` | the sender for those emails, on your verified Resend domain, e.g. `Client Pipeline <hello@mail.tylerpigott.com>` |
+| `ADMIN_EMAIL` | optional, who hears about new requests, defaults to `me@tylerpigott.com` |
 
 Supabase gives the functions your project URL and secret key automatically.
 
-### Deploy the four functions
+### Deploy the five functions
 
 **From the dashboard:** **Edge Functions > Deploy a new function > Via Editor**. Create each one with exactly these names, paste the matching file from this repository, and click **Deploy**:
 
@@ -122,6 +134,7 @@ Supabase gives the functions your project URL and secret key automatically.
 | `create-checkout` | `supabase/functions/create-checkout/index.ts` |
 | `billing-portal` | `supabase/functions/billing-portal/index.ts` |
 | `stripe-webhook` | `supabase/functions/stripe-webhook/index.ts` |
+| `notify` | `supabase/functions/notify/index.ts` |
 
 Then open each function's settings and turn **Verify JWT off**. Each function checks the signed-in person itself (or, for the webhook, Stripe's signature), and the platform check would block the webhook entirely.
 
@@ -133,7 +146,7 @@ npx supabase link --project-ref YOUR-PROJECT-REF
 npx supabase functions deploy
 ```
 
-`supabase/config.toml` already turns JWT verification off for all four.
+`supabase/config.toml` already turns JWT verification off for all five.
 
 ## 9. Connect the app
 
@@ -141,8 +154,8 @@ Edit `app/config.js` and fill in the Project URL and publishable key from step 1
 
 ## 10. Test the whole flow
 
-1. Open `APP_URL` in a private window and sign up with a second email address. You should land on "You're on the list".
-2. In your own window, open **Admin** and approve them.
+1. Open `APP_URL` in a private window and sign up with a second email address. You should land on "You're on the list", and me@tylerpigott.com should get a "New early access request" email with a link to the Admin tab.
+2. In your own window, open **Admin** and approve them. The app should say it emailed them, and the second address should get "You're approved for Client Pipeline". Replies to it come to me@tylerpigott.com.
 3. In the private window, click **Check again**, choose **App + coaching**, and pay with Stripe's test card `4242 4242 4242 4242`, any future date and any CVC.
 4. You come back to **Billing**, and within a few seconds it shows the plan. If it doesn't, check **Developers > Webhooks** in Stripe for a failed delivery, and **Edge Functions > stripe-webhook > Logs** in Supabase.
 5. Try **Try it with example data**, **Recommend my value asset**, then on the example prospect **Find the gap and draft emails** and **Build the full asset**.

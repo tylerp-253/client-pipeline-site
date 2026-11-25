@@ -319,7 +319,11 @@ async function loadAccount() {
     history.replaceState(null, '', location.pathname + location.hash);
   }
   const q = state.profile;
-  if (!q || q.status === 'pending') state.phase = 'pending';
+  if (!q || q.status === 'pending') {
+    state.phase = 'pending';
+    // Lets the admin know about the request. The server sends this at most once per person.
+    if (q) invoke('notify', { event: 'signup' }).catch((e) => console.warn('Request notification not sent:', e.message));
+  }
   else if (q.status === 'rejected') state.phase = 'rejected';
   else if (!hasAccess(q)) state.phase = 'plans';
   else {
@@ -419,7 +423,7 @@ function viewPending() {
   return h('div', { class: 'sheet narrow' },
     h('p', { class: 'hand', text: 'Request received.' }),
     h('h1', { text: "You're on the list" }),
-    h('p', {}, 'Thanks for requesting early access. Tyler reviews every request personally, and you will be able to choose a plan here as soon as yours is approved.'),
+    h('p', {}, "Thanks for requesting early access. Tyler reviews every request personally, and we'll email you as soon as yours is approved. Then you can choose a plan right here."),
     h('p', { class: 'muted', text: 'Signed in as ' + (state.user?.email || '') }),
     h('div', { class: 'row' }, h('button', { type: 'button', onclick: () => loadAccount() }, 'Check again')));
 }
@@ -699,12 +703,22 @@ async function loadAdminRows() {
   state.adminRows = data || []; render();
 }
 async function setAccess(row, status, comped) {
+  const wasApproved = row.status === 'approved';
   busy(true, 'Saving...');
   const { data, error } = await sb.rpc('admin_set_access', { target: row.id, new_status: status, new_comped: comped });
-  busy(false);
-  if (error) { setNotice('That change could not be saved: ' + error.message); return; }
+  if (error) { busy(false); setNotice('That change could not be saved: ' + error.message); return; }
   Object.assign(row, data || { status, comped });
   if (row.id === state.profile?.id) state.profile = { ...state.profile, ...row };
+  if (status === 'approved' && !wasApproved) {
+    busy(true, 'Emailing ' + row.email + '...');
+    try {
+      const out = await invoke('notify', { event: 'approved', target: row.id });
+      setNotice(out?.sent ? 'Approved. We emailed ' + row.email + ' to let them know.' : 'Approved.');
+    } catch (e) {
+      setNotice('Approved, but the welcome email did not send (' + e.message + ') Let ' + row.email + ' know yourself.');
+    }
+  }
+  busy(false);
   render();
 }
 function viewAdmin() {

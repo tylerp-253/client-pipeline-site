@@ -35,6 +35,8 @@ create table public.profiles (
   current_period_end     timestamptz,
   stripe_customer_id     text unique,
   stripe_subscription_id text,
+  signup_notified_at     timestamptz,  -- when the admin was emailed about this request
+  approved_notified_at   timestamptz,  -- when this person was emailed that they're approved
   created_at             timestamptz not null default now(),
   updated_at             timestamptz not null default now()
 );
