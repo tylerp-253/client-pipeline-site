@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en" id="top">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Client Pipeline for Agencies</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;700;800&family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout idea: a sales platform with a working tool underneath. Deep green hero, the product window up front with pipeline stages, signal yellow for the one action, dense practical sections below. */
+:root{
+  --bg:#F4F6F5; --surface:#FFFFFF; --ink:#0F1F1A; --muted:#52625B; --line:#D6DDD9;
+  --accent:#0B6B4A; --on-accent:#FFFFFF; --soft:#E7F0EB;
+  --hero:#0F2A20; --hero-ink:#FFFFFF; --hero-muted:#BFD0C8; --hero-line:#2C4A3D;
+  --hot:#FFD84D; --on-hot:#1B1A08;
+  --display:'Schibsted Grotesk','Arial Black',system-ui,sans-serif;
+  --body:'Figtree',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B1310; --surface:#15211C; --ink:#EAF2EE; --muted:#A7B8B0; --line:#2A3A33;
+    --accent:#3CC68F; --on-accent:#0B1A14; --soft:#1A2E26;
+    --hero:#123326; --hero-ink:#FFFFFF; --hero-muted:#BFD0C8; --hero-line:#2F5444;
+    --hot:#F2CF4A; --on-hot:#1B1A08; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0B1310; --surface:#15211C; --ink:#EAF2EE; --muted:#A7B8B0; --line:#2A3A33;
+  --accent:#3CC68F; --on-accent:#0B1A14; --soft:#1A2E26;
+  --hero:#123326; --hero-ink:#FFFFFF; --hero-muted:#BFD0C8; --hero-line:#2F5444;
+  --hot:#F2CF4A; --on-hot:#1B1A08; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.5}
+p,h1,h2,h3,ul,ol,dl,dd,figure{margin:0}
+ul,ol{padding:0;list-style:none}
+.inner{max-width:1120px;margin:0 auto;padding:0 20px}
+section{padding:60px 0}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;letter-spacing:-0.015em}
+h1{font-weight:800;font-size:clamp(38px,7.6vw,68px);line-height:1.02}
+h2{font-weight:700;font-size:clamp(28px,4.6vw,42px);line-height:1.08;max-width:20ch}
+h3{font-weight:700;font-size:19px;line-height:1.2}
+.mono{font-family:var(--mono);font-size:12px;letter-spacing:0.04em;text-transform:uppercase}
+.muted{color:var(--muted)}
+.sub{margin-top:12px;max-width:44em;color:var(--muted);font-size:18px}
+a{color:var(--accent)}
+:focus-visible{outline:3px solid var(--hot);outline-offset:3px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:52px;padding:14px 26px;border-radius:8px;background:var(--accent);color:var(--on-accent);font-weight:600;font-size:17px;text-decoration:none;transition:transform .15s ease}
+.btn:hover{transform:translateY(-2px)}
+.btn.hot{background:var(--hot);color:var(--on-hot)}
+.btn.small{min-height:44px;padding:8px 16px;font-size:15px}
+.btn.line{background:transparent;color:var(--ink);border:1.5px solid var(--ink)}
+.chip{display:inline-flex;align-items:center;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;border:1px solid var(--line);white-space:nowrap;color:var(--muted)}
+.chip.sent{background:var(--soft);border-color:transparent;color:var(--ink)}
+.chip.replied{background:var(--hot);border-color:transparent;color:var(--on-hot)}
+.chip.booked{background:var(--accent);border-color:transparent;color:var(--on-accent)}
+
+/* hero */
+.hero{background:var(--hero);color:var(--hero-ink);padding:18px 0 0}
+.bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding-bottom:44px}
+.brand{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-family:var(--display);font-weight:800;font-size:20px;color:var(--hero-ink);text-decoration:none}
+.brand .tag{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border:1px solid var(--hero-line);border-radius:999px;color:var(--hero-muted)}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:40px}
+.pitch{display:flex;flex-direction:column;gap:20px;align-items:flex-start;padding-bottom:8px}
+.pitch .mono{color:var(--hot)}
+.pitch em{font-style:normal;color:var(--hot)}
+.pitch .lede{font-size:19px;color:var(--hero-muted);max-width:33em}
+.pitch .fine{font-size:14px;color:var(--hero-muted)}
+
+/* product window */
+.app{background:var(--surface);color:var(--ink);border-radius:12px 12px 0 0;border:1px solid var(--hero-line);border-bottom:0;overflow:hidden}
+.app-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line)}
+.app-top .mono{color:var(--muted)}
+.stages{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid var(--line)}
+.stages div{padding:12px 10px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
+.stages div:first-child{border-left:0}
+.stages b{font-family:var(--display);font-weight:800;font-size:28px;line-height:1;font-variant-numeric:tabular-nums}
+.stages span{font-size:12px;color:var(--muted)}
+.stages .on{background:var(--soft)}
+.rows li{padding:14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.rows li:last-child{border-bottom:0}
+.row-head{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.row-head b{display:block;font-weight:600;font-size:15px}
+.row-head span.who{font-size:13px;color:var(--muted)}
+.finding{background:var(--soft);border-left:3px solid var(--accent);border-radius:0 6px 6px 0;padding:10px 12px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.finding .mono{color:var(--accent)}
+.seq{display:flex;flex-wrap:wrap;gap:6px}
+
+/* compare */
+.compare{margin-top:32px;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}
+.compare .head,.compare li{display:grid;grid-template-columns:minmax(0,1fr)}
+.compare .head{display:none}
+.compare li{border-top:1px solid var(--line)}
+.compare li:first-child{border-top:0}
+.compare .cell{padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.compare .then{color:var(--muted)}
+.compare .now{background:var(--soft);font-weight:500}
+.compare .cell .mono{color:var(--muted)}
+
+/* steps */
+.band{background:var(--surface);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.steps{display:grid;grid-template-columns:minmax(0,1fr);gap:0;margin-top:32px}
+.steps li{position:relative;padding:0 0 26px 52px;display:flex;flex-direction:column;gap:6px}
+.steps li::before{content:"";position:absolute;left:17px;top:36px;bottom:0;width:2px;background:var(--line)}
+.steps li:last-child::before{display:none}
+.steps .n{position:absolute;left:0;top:0;width:36px;height:36px;border-radius:50%;background:var(--ink);color:var(--bg);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:800;font-size:16px}
+.steps li:last-child .n{background:var(--hot);color:var(--on-hot)}
+
+/* asset table */
+.index{margin-top:32px;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}
+.index li{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;padding:16px;border-top:1px solid var(--line)}
+.index li:first-child{border-top:0}
+.index .sell{font-size:14px;color:var(--muted)}
+.index .lead{font-family:var(--display);font-weight:700;font-size:19px;line-height:1.2}
+.index .what{font-size:15px;color:var(--muted)}
+
+/* features */
+.tiles{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin-top:32px}
+.tiles li{background:var(--bg);border:1px solid var(--line);border-top:3px solid var(--accent);border-radius:8px;padding:18px;display:flex;flex-direction:column;gap:6px}
+.tiles p{font-size:15px;color:var(--muted)}
+
+/* plans */
+.plans{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;margin-top:32px}
+.plan{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:24px 20px;display:flex;flex-direction:column;gap:14px}
+.plan.main{border:2px solid var(--accent)}
+.price{display:flex;align-items:baseline;gap:8px;font-family:var(--display);font-weight:800;font-size:42px;line-height:1}
+.price small{font-family:var(--body);font-weight:400;font-size:16px;color:var(--muted)}
+.plan ul{display:flex;flex-direction:column;gap:9px;flex:1;font-size:16px}
+.plan li{display:flex;gap:10px;align-items:flex-start}
+.plan li svg{flex:none;margin-top:4px;color:var(--accent)}
+
+/* answers */
+.answers{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;margin-top:32px}
+.answers dt{font-weight:600;font-size:18px;margin-bottom:4px}
+.answers dd{color:var(--muted);max-width:60ch;font-size:16px}
+
+/* close */
+.close{background:var(--hero);color:var(--hero-ink)}
+.close .inner{display:flex;flex-direction:column;gap:20px;align-items:flex-start}
+.close p{color:var(--hero-muted)}
+.setup{border:2px dashed var(--hero-line);border-radius:8px;padding:12px 14px;font-size:15px}
+footer{padding:24px 0 40px;font-size:14px;color:var(--muted)}
+footer .inner{display:flex;flex-wrap:wrap;gap:6px 22px}
+
+@media (min-width:760px){
+  section{padding:84px 0}
+  .compare .head{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-bottom:1px solid var(--line)}
+  .compare .head span{padding:10px 16px;color:var(--muted)}
+  .compare li{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .compare .cell .mono{display:none}
+  .steps{grid-template-columns:repeat(4,minmax(0,1fr));gap:24px}
+  .steps li{padding:52px 0 0 0}
+  .steps li::before{left:44px;right:-24px;top:17px;bottom:auto;width:auto;height:2px}
+  .index li{grid-template-columns:minmax(0,.8fr) minmax(0,1fr) minmax(0,1.5fr);gap:20px;align-items:baseline;padding:16px 20px}
+  .tiles{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .plans{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .answers{grid-template-columns:repeat(2,minmax(0,1fr));gap:30px 48px}
+}
+@media (min-width:980px){
+  .hero-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;align-items:end}
+  .pitch{padding-bottom:64px}
+}
+@media (prefers-reduced-motion: reduce){
+  html{scroll-behavior:auto}
+  .btn{transition:none}
+  .btn:hover{transform:none}
+}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="inner">
+    <div class="bar">
+      <a class="brand" href="#top">Client Pipeline <span class="tag">Early access</span></a>
+      <a class="btn hot small js-apply" href="#early-access">Request early access</a>
+    </div>
+    <div class="hero-grid">
+      <div class="pitch">
+        <p class="mono">The outbound system for marketing agencies</p>
+        <h1>Build a client pipeline that <em>doesn't wait on referrals</em></h1>
+        <p class="lede">Pick the prospects you want. Lead every email with a real finding about their business, written in your voice. See where each one stands, from drafted to call booked.</p>
+        <a class="btn hot js-apply" href="#early-access">Request early access</a>
+        <p class="fine">Plans from $300 a month. You send every email yourself.</p>
+      </div>
+
+      <figure class="app" aria-label="Example view of a Client Pipeline workspace">
+        <div class="app-top">
+          <span class="mono">Workspace · Your agency</span>
+          <span class="chip">Example data</span>
+        </div>
+        <div class="stages">
+          <div><b>7</b><span>Drafted</span></div>
+          <div><b>6</b><span>Sent</span></div>
+          <div class="on"><b>1</b><span>Replied</span></div>
+          <div><b>1</b><span>Call booked</span></div>
+        </div>
+        <ul class="rows">
+          <li>
+            <div class="row-head"><div><b>Regional HVAC company</b><span class="who">Dana, owner</span></div><span class="chip replied">Replied</span></div>
+            <div class="finding"><span class="mono">Finding</span><p>The headline says "Excellence in comfort solutions." A visitor can't tell what they install or who they serve.</p></div>
+            <div class="seq"><span class="chip sent">Email 1 sent</span><span class="chip sent">Day 3 sent</span><span class="chip">Day 10 ready</span><span class="chip">Full audit ready to build</span></div>
+          </li>
+          <li><div class="row-head"><div><b>Family dental group</b><span class="who">Priya, practice manager</span></div><span class="chip booked">Call booked</span></div></li>
+          <li><div class="row-head"><div><b>Commercial roofing contractor</b><span class="who">Marcus, president</span></div><span class="chip sent">Sent</span></div></li>
+          <li><div class="row-head"><div><b>Boutique law firm</b><span class="who">Elena, managing partner</span></div><span class="chip">Drafted</span></div></li>
+        </ul>
+      </figure>
+    </div>
+  </div>
+</header>
+
+<section id="why">
+  <div class="inner">
+    <h2>Referrals built your agency. Outbound grows it on your schedule.</h2>
+    <p class="sub">You're good at the work. You shouldn't have to wait for someone to mention your name before you get to prove it.</p>
+    <div class="compare">
+      <div class="head mono"><span>Waiting on referrals</span><span>Running a pipeline</span></div>
+      <ul>
+        <li><div class="cell then"><span class="mono">Waiting on referrals</span>New business shows up when someone remembers to refer you.</div><div class="cell now"><span class="mono">Running a pipeline</span>You choose who to go after, and you work that list every week.</div></li>
+        <li><div class="cell then"><span class="mono">Waiting on referrals</span>Cold emails that sound like every other agency's.</div><div class="cell now"><span class="mono">Running a pipeline</span>Every email opens with a real finding about their business, with the evidence quoted.</div></li>
+        <li><div class="cell then"><span class="mono">Waiting on referrals</span>Outbound lives in someone's head and a spreadsheet.</div><div class="cell now"><span class="mono">Running a pipeline</span>Targeting, voice, drafts, and status in one workspace.</div></li>
+        <li><div class="cell then"><span class="mono">Waiting on referrals</span>Follow-up happens when there's time.</div><div class="cell now"><span class="mono">Running a pipeline</span>Three emails drafted up front, so the second and third are ready to send.</div></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="how" class="band">
+  <div class="inner">
+    <h2>From first question to booked call</h2>
+    <ol class="steps">
+      <li><span class="n" aria-hidden="true">1</span><h3>Set up</h3><p class="muted">Answer nine questions about who you serve and what you sell. About ten minutes.</p></li>
+      <li><span class="n" aria-hidden="true">2</span><h3>Choose your asset</h3><p class="muted">The app recommends the one useful thing to make for each prospect, and what to look for.</p></li>
+      <li><span class="n" aria-hidden="true">3</span><h3>Work the list</h3><p class="muted">Add a prospect and paste in their homepage, ads, or welcome email. Get a finding and three emails in your voice.</p></li>
+      <li><span class="n" aria-hidden="true">4</span><h3>Follow through</h3><p class="muted">Send the full one-page asset when they reply, and track every prospect through to a booked call.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section id="assets">
+  <div class="inner">
+    <h2>Lead with the work you're known for</h2>
+    <p class="sub">A value asset is one useful thing you make for a prospect before you ask for anything. The app matches it to what you sell.</p>
+    <ul class="index">
+      <li><span class="sell">You sell messaging or brand</span><span class="lead">Messaging clarity audit</span><span class="what">What a first-time visitor understands in five seconds, and the biggest gap.</span></li>
+      <li><span class="sell">You sell SEO</span><span class="lead">Search gap snapshot</span><span class="what">Three search topics they should own and don't show up for, with the evidence.</span></li>
+      <li><span class="sell">You sell paid ads</span><span class="lead">Ad teardown</span><span class="what">Their current ads next to two competitors, and the biggest miss.</span></li>
+      <li><span class="sell">You sell web design</span><span class="lead">Homepage before-and-after brief</span><span class="what">What the top of their homepage does now, and a sketch of a stronger version.</span></li>
+      <li><span class="sell">You sell email</span><span class="lead">Welcome email rewrite</span><span class="what">What their welcome email misses, and the opening lines of a stronger one.</span></li>
+    </ul>
+  </div>
+</section>
+
+<section id="tool" class="band">
+  <div class="inner">
+    <h2>A practical tool, built for how agencies sell</h2>
+    <ul class="tiles">
+      <li><h3>Workspaces</h3><p>Keep each offer or niche in its own workspace, with its own targeting and voice.</p></li>
+      <li><h3>Your voice</h3><p>Drafts are built from emails you've written. Edit every word before it goes out.</p></li>
+      <li><h3>Evidence on every finding</h3><p>Each finding quotes the prospect's own words, so you can check it in seconds.</p></li>
+      <li><h3>One-page assets</h3><p>Build the full audit, teardown, or rewrite when a prospect replies. Copy it or download it.</p></li>
+      <li><h3>Pipeline tracker</h3><p>See what's sent, who replied, and which calls are booked at a glance.</p></li>
+      <li><h3>You stay in control</h3><p>Nothing sends on its own. Every email goes out from your inbox, under your name.</p></li>
+    </ul>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="inner">
+    <h2>Pick how much help you want</h2>
+    <div class="plans">
+      <div class="plan">
+        <h3>The app</h3>
+        <p class="price">$300 <small>a month</small></p>
+        <p class="muted">For agencies that want to run it themselves.</p>
+        <ul>
+          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>Setup questions and a value asset recommendation</span></li>
+          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>One finding and three emails for every prospect</span></li>
+          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>Full one-page assets to send when they reply</span></li>
+          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>A tracker for sent, replies, and calls booked</span></li>
+        </ul>
+        <a class="btn line js-apply" href="#early-access">Request early access</a>
+      </div>
+      <div class="plan main">
+        <h3>App + coaching</h3>
+        <p class="price">$1,500 <small>a month</small></p>
+        <p class="muted">For agencies that want a guide in their corner.</p>
+        <ul>
+          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>Everything in the app</span></li>
+          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>A 1:1 onboarding call to set your targeting and voice</span></li>
+          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>A weekly review of your prospects and drafts</span></li>
+          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>Help responding to the replies you get</span></li>
+        </ul>
+        <a class="btn js-apply" href="#early-access">Request early access</a>
+      </div>
+      <div class="plan">
+        <h3>Mastermind</h3>
+        <p class="price" style="font-size:32px">By invitation</p>
+        <p class="muted">For owners who want to grow alongside peers.</p>
+        <ul>
+          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>A small group of agency owners</span></li>
+          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>Monthly working sessions</span></li>
+          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>Shared playbooks and what's working now</span></li>
+        </ul>
+        <a class="btn line js-apply" href="#early-access">Ask about the mastermind</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="answers" class="band">
+  <div class="inner">
+    <h2>Straight answers before you ask</h2>
+    <dl class="answers">
+      <div><dt>Does it send emails for me?</dt><dd>No. You copy each email and send it from your own inbox, so you stay in control of your name and your domain.</dd></div>
+      <div><dt>Where do the prospects come from?</dt><dd>In early access, you add the companies you want to reach. Bring a short list of businesses you'd love to work with.</dd></div>
+      <div><dt>Will it make things up?</dt><dd>It's built to work only from the material you give it. If there isn't enough for a real finding, it tells you what's missing instead of guessing. You still check every finding against their live site before you send.</dd></div>
+      <div><dt>Does it guarantee new clients?</dt><dd>No. It helps you start better conversations with the right people. Running the call and winning the work is still yours.</dd></div>
+      <div><dt>What do I need to get started?</dt><dd>Two or three emails you've written, a clear idea of who you serve, and about ten minutes for setup.</dd></div>
+      <div><dt>Is this just another AI email writer?</dt><dd>The emails are the small part. The work is in choosing the right asset for what you sell, and finding something true and useful to say to each prospect.</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section id="early-access" class="close">
+  <div class="inner">
+    <h2>You've got the expertise. Go start the conversations.</h2>
+    <p style="font-size:19px;max-width:34em">Request early access and we'll get you set up with your value asset and your first prospects.</p>
+    <a class="btn hot js-apply" href="#early-access">Request early access</a>
+    <p class="setup" id="setup-note">[Before you share this page: link these buttons to your application form or calendar.]</p>
+  </div>
+</section>
+
+<footer>
+  <div class="inner">
+    <span>[Your company name]</span>
+    <span>[Privacy policy]</span>
+    <span>[Terms]</span>
+    <span>Results vary from agency to agency.</span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  // Paste your application form or calendar link between the quotes. It must start with https://
+  var APPLY_URL = '';
+  if (/^https:\/\//.test(APPLY_URL)) {
+    var links = document.querySelectorAll('.js-apply');
+    for (var i = 0; i < links.length; i++) links[i].setAttribute('href', APPLY_URL);
+    var note = document.getElementById('setup-note');
+    if (note) note.remove();
+  }
+})();
+</script>
+</body>
+</html>
