@@ -7,6 +7,6 @@
 //
 // Never put the secret key (sb_secret_...) or the service_role key here.
 window.CP_CONFIG = {
-  supabaseUrl: '',
-  supabaseKey: '',
+  supabaseUrl: 'https://crqqgisgxlyrwfuayuod.supabase.co',
+  supabaseKey: 'sb_publishable_tCV1XJ2nTXHsN-rkXDNTVg_x4aUpXfo',
 };
