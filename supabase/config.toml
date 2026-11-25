@@ -1,0 +1,18 @@
+# Used only if you deploy with the Supabase CLI. Each function checks the
+# signed-in user (or Stripe's signature) itself, so the platform's JWT check
+# is turned off. If you deploy from the dashboard instead, turn off
+# "Verify JWT" on each function's settings page.
+
+project_id = "client-pipeline"
+
+[functions.ai]
+verify_jwt = false
+
+[functions.create-checkout]
+verify_jwt = false
+
+[functions.billing-portal]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
