@@ -1,341 +1,1244 @@
-<!DOCTYPE html>
-<html lang="en" id="top">
+<!doctype html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Client Pipeline for Agencies</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@600;700;800&family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<meta name="color-scheme" content="light">
+<title>Client Pipeline: build a client pipeline that doesn't wait on referrals</title>
+<meta name="description" content="For marketing agencies. Paste in a prospect's homepage, ads, or welcome email. Get one specific finding, quoted in their own words, and three emails in your voice that lead with it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,600..800&family=Kalam&family=Public+Sans:wght@400;600&display=swap" rel="stylesheet">
 <style>
-/* Layout idea: a sales platform with a working tool underneath. Deep green hero, the product window up front with pipeline stages, signal yellow for the one action, dense practical sections below. */
+/* Fallback metrics so the hero does not jump when the web fonts arrive */
+@font-face{font-family:"Archivo Fallback";src:local("Arial");size-adjust:104%;ascent-override:88%;descent-override:21%;line-gap-override:0%}
+@font-face{font-family:"Public Sans Fallback";src:local("Arial");size-adjust:101%;ascent-override:94%;descent-override:22%;line-gap-override:0%}
+
+/* One committed light look. Every color is set from these tokens. */
 :root{
-  --bg:#F4F6F5; --surface:#FFFFFF; --ink:#0F1F1A; --muted:#52625B; --line:#D6DDD9;
-  --accent:#0B6B4A; --on-accent:#FFFFFF; --soft:#E7F0EB;
-  --hero:#0F2A20; --hero-ink:#FFFFFF; --hero-muted:#BFD0C8; --hero-line:#2C4A3D;
-  --hot:#FFD84D; --on-hot:#1B1A08;
-  --display:'Schibsted Grotesk','Arial Black',system-ui,sans-serif;
-  --body:'Figtree',system-ui,-apple-system,'Segoe UI',sans-serif;
-  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
   color-scheme:light;
+  --paper:#F4F6F0;      /* ledger paper, page ground */
+  --ink:#10261D;        /* file ink */
+  --green:#0E6A48;      /* pipeline green, buttons and links */
+  --green-dark:#0A5238;
+  --manila:#E6D7A6;     /* hero folder only */
+  --manila-edge:#CDBB83;
+  --manila-shade:#DCCB92;
+  --desk:#0F2219;       /* product proof band */
+  --desk-text:#E9F0EA;
+  --desk-muted:#A9BDB1;
+  --desk-rule:#2C4237;
+  --band:#E6EEE7;       /* the only tinted band */
+  --muted:#4A5C53;
+  --rule:#CBD5CD;
+  --sheet:#FFFFFF;
+  --graphite:#3D4A44;
+  --win-bar:#EEF2EC;
+  --field:#F7F9F5;
+  --shadow-paper:5px 5px 0 rgba(16,38,29,.12);
+  --shadow-paper-strong:7px 7px 0 rgba(16,38,29,.18);
+  --shadow-window:0 24px 48px -28px rgba(0,0,0,.55);
+  --display:"Archivo","Archivo Fallback",Arial,sans-serif;
+  --text:"Public Sans","Public Sans Fallback",Arial,sans-serif;
+  --hand:"Kalam","Comic Sans MS",cursive;
+  --gutter:20px;
+  --max:1184px;
 }
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --bg:#0B1310; --surface:#15211C; --ink:#EAF2EE; --muted:#A7B8B0; --line:#2A3A33;
-    --accent:#3CC68F; --on-accent:#0B1A14; --soft:#1A2E26;
-    --hero:#123326; --hero-ink:#FFFFFF; --hero-muted:#BFD0C8; --hero-line:#2F5444;
-    --hot:#F2CF4A; --on-hot:#1B1A08; color-scheme:dark;
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+body{
+  margin:0;
+  background-color:var(--paper);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .06 0 0 0 0 .15 0 0 0 0 .11 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='.035'/%3E%3C/svg%3E");
+  color:var(--ink);
+  font-family:var(--text);
+  font-size:17px;
+  line-height:1.6;
+  overflow-x:clip;
+}
+img,svg{display:block;max-width:100%}
+p{margin:0}
+h1,h2,h3{margin:0;font-family:var(--display);color:var(--ink);text-wrap:balance}
+ul,ol,dl,dd{margin:0;padding:0}
+ul,ol{list-style:none}
+a{color:var(--green);text-underline-offset:.18em}
+.vh{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.wrap{width:100%;max-width:calc(var(--max) + 2 * var(--gutter));margin:0 auto;padding:0 var(--gutter)}
+
+:focus-visible{outline:3px solid var(--green);outline-offset:3px;border-radius:3px}
+
+/* Type */
+h1{font-size:40px;font-stretch:84%;font-weight:800;line-height:.98;letter-spacing:-.015em}
+h2{font-size:32px;font-stretch:100%;font-weight:800;line-height:1.04;letter-spacing:-.01em}
+h3{font-size:21px;font-weight:700;line-height:1.2}
+.lede{font-size:19px;line-height:1.5}
+.fine{font-size:15px;line-height:1.5;color:var(--muted)}
+.eyebrow{font-family:var(--display);font-stretch:75%;font-weight:600;font-size:16px;line-height:1.3;letter-spacing:.01em;color:var(--ink);margin-bottom:12px}
+.flabel{font-family:var(--display);font-stretch:75%;font-weight:600;font-size:14px;line-height:1.3;letter-spacing:.01em;color:var(--muted)}
+.tag{display:inline-block;font-family:var(--display);font-stretch:75%;font-weight:600;font-size:14px;line-height:1.2;letter-spacing:.01em;color:var(--ink);border:1px solid var(--ink);border-radius:3px;padding:3px 7px 2px}
+.ph{color:var(--muted)}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 24px;border:0;border-radius:6px;background:var(--green);color:#FFFFFF;font-family:var(--text);font-weight:600;font-size:17px;line-height:1.2;text-decoration:none;text-align:center}
+.btn:hover{background:var(--green-dark)}
+.btn-lg{min-height:52px;width:100%;font-size:18px}
+.btn-outline{background:transparent;color:var(--green);box-shadow:inset 0 0 0 2px var(--green)}
+.btn-outline:hover{background:var(--sheet);color:var(--green-dark)}
+.btn-quiet{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);font-weight:600}
+.btn-quiet:hover{background:var(--sheet)}
+.btn-sm{min-height:44px;padding:0 18px;font-size:16px}
+
+/* ===== 0. Nav ===== */
+.nav{padding:12px 0}
+.nav-in{display:flex;align-items:center;gap:12px;min-height:24px}
+.brand{font-family:var(--display);font-weight:800;font-stretch:112%;font-size:19px;letter-spacing:-.01em;line-height:1}
+.nav-btn{display:none;margin-left:auto}
+
+/* ===== 1. Hero ===== */
+.hero{padding:16px 0 72px;overflow-x:clip}
+.hero-copy .eyebrow{margin-bottom:12px}
+.hero h1{margin-bottom:16px}
+.hero .lede{margin-bottom:20px;max-width:34em}
+.hero .btn-lg{margin-bottom:10px}
+.hero-copy .fine{margin-bottom:24px}
+
+/* The prospect file */
+.folder{margin:0;position:relative}
+.folder-tab{position:relative;display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 26px 0 16px;background:var(--manila);clip-path:polygon(0 100%,0 18%,5% 0,92% 0,100% 100%);margin-bottom:-1px}
+.folder-tab .flabel{color:var(--ink);font-size:14px;white-space:nowrap}
+.folder-body{position:relative;display:flex;flex-direction:column;background:var(--manila);border:1px solid var(--manila-edge);border-radius:0 2px 2px 2px;box-shadow:var(--shadow-paper);padding:12px 10px 18px}
+.sheet{background:var(--sheet);border:1px solid var(--rule);border-radius:2px;box-shadow:var(--shadow-paper)}
+.clip{position:relative;z-index:3;order:2;margin-top:8px;padding:12px 14px 14px}
+.clip .label-row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-bottom:8px}
+.clip-h{position:relative;text-wrap:balance;font-family:var(--text);font-weight:600;font-size:21px;line-height:1.25;color:var(--ink);margin-bottom:4px}
+.clip-sub{font-size:15px;line-height:1.45;color:var(--muted)}
+.stack{position:relative;z-index:2;order:1;padding-bottom:50px}
+.email{position:relative;z-index:3;padding:14px 16px 16px;font-size:16px;line-height:1.55}
+.behind{position:absolute;left:0;right:0;height:60px;bottom:0;z-index:1;display:flex;align-items:flex-end;padding:0 14px 5px;box-shadow:none}
+.behind.b1{bottom:25px;left:4px;right:-4px;z-index:2}
+.behind.b2{bottom:0;left:8px;right:-8px}
+.behind .flabel{font-size:13px;color:var(--muted)}
+.email-head{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.hdrs{border-bottom:1px dashed var(--rule);padding-bottom:10px;margin-bottom:12px}
+.hdrs div{display:grid;grid-template-columns:62px 1fr;gap:8px;align-items:baseline}
+.hdrs dt{font-family:var(--display);font-stretch:75%;font-weight:600;font-size:14px;color:var(--muted)}
+.hdrs dd{font-size:15px;line-height:1.45}
+.email-body>*+p{margin-top:12px}
+.folder figcaption{margin-top:14px;font-size:15px;line-height:1.45;color:var(--muted)}
+
+/* ===== 2. Objection strip ===== */
+.objections{padding:56px 0 48px;border-bottom:1px solid var(--rule)}
+.obj-grid h2{margin-bottom:24px;max-width:12em}
+.obj-list li{padding:16px 0;border-top:1px solid var(--rule);max-width:64ch}
+.obj-list li:first-child{border-top:0;padding-top:0}
+.obj-list strong{display:block;font-family:var(--display);font-stretch:75%;font-weight:600;font-size:17px;line-height:1.3;margin-bottom:4px}
+
+/* ===== 3. Referrals vs a pipeline ===== */
+.problem{padding:88px 0 96px}
+.problem-text{max-width:640px}
+.problem-text h2{margin-bottom:24px}
+.problem-text p+p{margin-top:16px}
+.problem-text .body{max-width:64ch}
+.ledger{width:100%;margin-top:56px;border-collapse:collapse;max-width:880px}
+.ledger caption{text-align:left}
+.ledger thead{display:none}
+.ledger tr{display:block;border-top:1px solid var(--ink);padding:16px 0 18px}
+.ledger tr:last-child{border-bottom:1px solid var(--ink)}
+.ledger td{display:block;padding:0}
+.ledger td+td{margin-top:12px}
+.ledger .side{display:block;font-family:var(--display);font-stretch:75%;font-weight:600;font-size:14px;color:var(--muted);margin-bottom:2px}
+.ledger td.then{color:var(--muted)}
+.ledger td.now{font-weight:600}
+
+/* ===== 4. Proof: the desk ===== */
+.proof{background:var(--desk);color:var(--desk-text);padding:80px 0 88px}
+.proof h2{color:var(--desk-text);margin-bottom:16px}
+.proof .eyebrow{color:var(--desk-text)}
+.proof-intro{max-width:600px;margin-bottom:40px}
+.proof-intro p:last-child{color:var(--desk-muted)}
+.proof :focus-visible{outline-color:var(--desk-text)}
+.window{margin:0 calc(-1 * var(--gutter) + 6px);background:var(--sheet);color:var(--ink);border:1px solid #2F4639;border-radius:10px;box-shadow:var(--shadow-window);overflow:hidden}
+.win-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 14px;background:var(--win-bar);border-bottom:1px solid var(--rule)}
+.win-bar .brandmini{font-family:var(--display);font-weight:800;font-stretch:112%;font-size:15px}
+.win-bar .flabel{color:var(--muted)}
+.win-prospect{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:16px 16px 4px}
+.win-prospect .p-name{font-family:var(--display);font-weight:700;font-size:21px;line-height:1.2}
+.win-prospect .p-who{font-size:15px;color:var(--muted)}
+.ps{position:relative;padding:20px 16px 22px}
+.ps+.ps{border-top:2px dotted var(--rule)}
+.ps-num{font-family:var(--display);font-stretch:75%;font-weight:800;font-size:15px;color:var(--muted);display:block;margin-bottom:2px;font-variant-numeric:tabular-nums}
+.ps h3{font-size:19px;margin-bottom:10px}
+.pasted{background:var(--field);border:1px solid var(--rule);border-radius:3px;padding:10px 12px;font-size:15px;line-height:1.5}
+.pasted .flabel{display:block;margin-bottom:4px}
+.pasted p+p{margin-top:6px}
+.cap{margin-top:10px;font-size:15px;line-height:1.45;color:var(--muted)}
+.finding-text{font-size:17px;line-height:1.5}
+.finding-text q{font-weight:600}
+.wnote{display:block;margin-top:8px;padding-left:10px;border-left:2px solid var(--green);font-family:var(--display);font-stretch:75%;font-weight:600;font-size:14px;line-height:1.35;color:var(--green)}
+.app-email{border:1px solid var(--rule);border-radius:3px;padding:12px 14px 14px;font-size:16px;line-height:1.55}
+.app-email .hdrs div{grid-template-columns:62px 1fr}
+.app-email .email-body>*+p{margin-top:10px}
+.followups .app-email{border:0;border-radius:0;padding:0 14px 14px}
+.followups .app-email p{padding:0}
+.followups{margin-top:4px}
+.followups details:first-child{margin-top:0}
+.followups details{border:1px solid var(--rule);border-radius:3px;margin-top:8px;background:var(--sheet)}
+.followups summary{min-height:48px;display:flex;align-items:center;gap:10px;padding:0 14px;cursor:pointer;font-family:var(--display);font-stretch:75%;font-weight:600;font-size:16px;list-style:none}
+.followups summary::-webkit-details-marker{display:none}
+.followups summary::before{content:"";width:0;height:0;border-left:6px solid var(--ink);border-top:5px solid transparent;border-bottom:5px solid transparent;flex:none}
+.followups details[open] summary::before{transform:rotate(90deg)}
+.followups details p{padding:0 14px 14px;font-size:16px;line-height:1.55}
+.inbox-row{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;border:1px solid var(--rule);border-radius:3px;padding:10px 12px;background:var(--field)}
+.inbox-row .from{font-weight:600}
+.inbox-row .subj{font-size:15px;color:var(--muted);text-align:right}
+.inbox-row .snip{grid-column:1/-1;font-size:16px}
+.built{margin-top:12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
+.built .what{font-weight:600;font-size:16px;margin-right:4px}
+.built .tag{border-color:var(--rule);color:var(--muted)}
+.counts{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--ink);border-left:1px solid var(--rule)}
+.counts div{padding:8px 10px 10px;border-right:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.counts b{display:block;font-family:var(--display);font-stretch:75%;font-weight:800;font-size:40px;line-height:1;font-variant-numeric:tabular-nums}
+.counts span{font-family:var(--display);font-stretch:75%;font-weight:600;font-size:14px;color:var(--muted)}
+.rows{margin-top:14px}
+.rows li{display:grid;grid-template-columns:1fr;gap:6px;padding:12px 0;border-bottom:1px solid var(--rule)}
+.rows li:first-child{border-top:1px solid var(--rule)}
+.rows .co{font-weight:600;line-height:1.3}
+.rows .who{display:block;font-weight:400;font-size:15px;color:var(--muted)}
+.rows .status{justify-self:start}
+.status{display:inline-block;font-family:var(--display);font-stretch:75%;font-weight:600;font-size:14px;line-height:1.2;border:1px solid var(--muted);border-radius:3px;padding:3px 8px 2px;color:var(--ink);background:var(--sheet)}
+.proof-end{margin-top:40px;display:flex;flex-direction:column;gap:16px;align-items:flex-start}
+.proof-end p{font-family:var(--display);font-weight:700;font-size:21px;line-height:1.3;color:var(--desk-text);max-width:28em}
+.proof .btn{background:#F4F6F0;color:#10261D;box-shadow:none}
+.proof .btn:hover{background:#FFFFFF;color:#10261D}
+
+/* ===== 5. How it works + value assets ===== */
+.how-band{background:var(--band);padding:64px 0 72px}
+.how-band h2{max-width:16em;margin-bottom:40px}
+.timeline{position:relative;border-left:2px solid var(--ink);margin-left:5px}
+.timeline>li{position:relative;padding:0 0 32px 24px}
+.timeline>li:last-child{padding-bottom:0}
+.timeline>li::before{content:"";position:absolute;left:-8px;top:4px;width:14px;height:14px;background:var(--ink)}
+.t-num{display:block;font-family:var(--display);font-stretch:75%;font-weight:800;font-size:15px;color:var(--muted);margin-bottom:2px}
+.timeline h3{margin-bottom:8px}
+.timeline p{max-width:44ch}
+.dated{display:flex;gap:10px;margin-top:18px}
+.dated li{flex:1;background:var(--sheet);border:1px solid var(--rule);border-radius:2px;box-shadow:var(--shadow-paper);padding:8px 10px 10px;min-width:0}
+.dated b{display:block;font-family:var(--display);font-stretch:75%;font-weight:800;font-size:18px;line-height:1.1}
+.dated span{display:block;font-size:14px;line-height:1.3;color:var(--muted);margin-top:2px}
+
+.assets{padding:72px 0 80px}
+.assets-grid{display:flex;flex-direction:column}
+.assets-main{display:contents}
+.assets-main .eyebrow{order:1}.assets-main h3{order:2}.assets-main>p:not(.eyebrow):not(.after){order:3}.assets-gutter{order:4;margin-top:24px}.index{order:5}.assets .after{order:6}
+.assets-main h3{font-size:28px;font-weight:800;line-height:1.08;margin-bottom:16px;max-width:16em}
+.assets-main>p{max-width:60ch}
+.index{width:100%;border-collapse:collapse;margin-top:32px}
+.index caption{text-align:left}
+.index thead{display:none}
+.index tr{display:block;border-top:1px solid var(--ink);padding:16px 0 18px}
+.index tbody tr:last-child{border-bottom:1px solid var(--ink)}
+.index td{display:block;padding:0;vertical-align:top}
+.index .sell{font-size:15px;color:var(--muted);margin-bottom:2px}
+.index .asset b{display:block;font-family:var(--display);font-weight:700;font-size:21px;line-height:1.2}
+.index .asset span{display:block;font-family:var(--display);font-stretch:75%;font-weight:600;font-size:14px;color:var(--muted);margin-top:2px}
+.index .looks{margin-top:8px}
+.assets .after{margin-top:20px;font-weight:600}
+
+/* ===== 6. Plans ===== */
+.plans{padding:72px 0 88px}
+.plans-head{max-width:560px;margin-bottom:40px}
+.plans-head h2{margin-bottom:14px}
+.rates{background:var(--sheet);border:1px solid var(--rule);border-radius:2px;box-shadow:var(--shadow-paper)}
+.rate{position:relative;padding:24px 18px 28px}
+.rate h3{font-size:21px;margin-bottom:10px}
+.price{display:flex;align-items:baseline;gap:8px;white-space:nowrap;margin-bottom:6px}
+.price .amt{font-family:var(--display);font-stretch:112%;font-weight:800;font-size:44px;line-height:1;letter-spacing:-.02em}
+.price .per{font-size:16px;color:var(--muted)}
+.rate .for{color:var(--muted);margin-bottom:18px}
+.incl{margin-bottom:24px}
+.incl li{padding:10px 0 10px 16px;border-top:1px solid var(--rule);line-height:1.45}
+.incl li:last-child{border-bottom:1px solid var(--rule)}
+.rate .btn{width:100%}
+.rate-coach{border-top:2px solid var(--ink);outline:2px solid var(--ink);outline-offset:-2px;background:var(--sheet)}
+.rate-coach .plus{font-weight:600;margin-bottom:6px}
+.coach{margin:0 0 24px;padding:14px 0 0;border-top:1px dashed var(--rule);font-size:15px;line-height:1.5}
+.coach .who{display:block;font-weight:600;font-size:16px}
+.coach .role{display:block;color:var(--muted);margin-bottom:8px}
+.rate-mm{padding:22px 18px 24px;border-top:1px solid var(--rule);background:var(--paper)}
+.rate-mm h3{font-size:19px;font-weight:700;margin-bottom:2px}
+.rate-mm .by{font-family:var(--display);font-stretch:75%;font-weight:600;font-size:15px;color:var(--muted);margin-bottom:8px}
+.rate-mm .mm-list{display:flex;flex-wrap:wrap;gap:4px 18px;margin:10px 0 6px;font-size:15px}
+.rate-mm .mm-list li{position:relative;padding-left:14px}
+.rate-mm .mm-list li::before{content:"";position:absolute;left:0;top:.62em;width:5px;height:5px;background:var(--ink)}
+.rate-mm .ph{font-size:15px;margin-bottom:14px}
+.rate-mm .btn{width:100%}
+.billing{margin-top:18px;font-size:15px;color:var(--muted)}
+
+/* ===== 7. Straight answers ===== */
+.answers{padding:56px 0 64px;border-top:1px solid var(--ink)}
+.answers h2{margin-bottom:24px;font-size:28px}
+.faq div{padding:14px 0;border-top:1px solid var(--rule)}
+.faq dt{font-weight:600;font-size:16px;line-height:1.4;margin-bottom:4px}
+.faq dd{font-size:15px;line-height:1.55;color:var(--muted);max-width:60ch}
+
+/* ===== 8. Close ===== */
+.close{padding:96px 0 96px}
+.letter{max-width:560px}
+.letter h2{margin-bottom:18px}
+.letter .body{margin-bottom:22px}
+.signoff{margin-bottom:28px}
+.signoff .typed{display:block;font-size:15px;color:var(--muted);margin-top:2px}
+.letter .btn-lg{margin-bottom:10px}
+#setup-note{font-size:15px;line-height:1.45;color:var(--ink);border:1px dashed var(--muted);border-radius:3px;padding:8px 10px;margin-bottom:10px}
+
+/* ===== 9. Footer ===== */
+.foot{border-top:1px solid var(--rule);padding:22px 0 32px}
+.foot-in{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:15px;color:var(--muted)}
+
+/* ===================== Wider phones and tablets ===================== */
+@media (min-width:600px){
+  :root{--gutter:32px}
+  .btn-lg{width:auto;padding:0 32px}
+  .letter .btn-lg{width:auto}
+  .counts{grid-template-columns:repeat(4,1fr)}
+  .rows li{grid-template-columns:1fr auto;align-items:center}
+  .rows .status{justify-self:end}
+  .ledger thead{display:table-header-group}
+  .ledger thead,.ledger tbody{display:block}
+  .ledger thead tr{border-top:0;padding:0 0 10px}
+  .ledger tr{display:grid;grid-template-columns:1fr 1fr;gap:32px}
+  .ledger th{text-align:left;font-family:var(--display);font-stretch:75%;font-weight:600;font-size:15px;color:var(--muted);padding:0}
+  .ledger td+td{margin-top:0}
+  .ledger .side{display:none}
+  .rate-mm .btn{width:auto}
+  .window{margin:0}
+}
+
+/* ===================== Desktop ===================== */
+@media (min-width:980px){
+  :root{--gutter:48px}
+  body{font-size:18px}
+  h1{font-size:clamp(56px,5.6vw,72px);font-stretch:112%}
+  h2{font-size:44px}
+  h3{font-size:24px}
+  .lede{font-size:21px}
+  .eyebrow{font-size:17px}
+  .nav{padding:20px 0 8px}
+  .brand{font-size:21px}
+  .nav-btn{display:inline-flex}
+
+  /* Hero: 5/7 split, folder runs off the right edge */
+  .hero{padding:40px 0 96px}
+  .hero-grid{display:grid;grid-template-columns:minmax(0,44fr) minmax(0,56fr);gap:44px;align-items:start}
+  .hero-copy{padding-top:28px}
+  .hero h1{margin-bottom:24px}
+  .hero .lede{margin-bottom:28px}
+  .hero-copy .btn-lg{width:auto}
+  .folder{margin-right:calc(-1 * var(--gutter) - 90px)}
+  .folder-tab{height:38px;padding:0 34px 0 20px}
+  .folder-body{padding:26px 120px 30px 26px;border-right:0}
+  .folder-body{display:block}
+  .clip{width:76%;margin-top:0;transform:rotate(-1.4deg);padding:16px 20px 18px}
+  .clip-h{font-size:26px}
+  .stack{margin-left:22%;margin-top:-10px;padding-bottom:52px}
+  .email{transform:rotate(1.1deg);padding:18px 22px 20px}
+  .behind{transform:rotate(1.1deg)}
+  .behind.b1{bottom:26px;left:8px;right:-8px}
+  .behind.b2{bottom:0;left:16px;right:-16px}
+  .folder figcaption{padding-left:22%;padding-right:120px}
+
+  /* Objections: heading left, list right */
+  .objections{padding:64px 0}
+  .obj-grid{display:grid;grid-template-columns:4fr 7fr;gap:48px;align-items:start}
+  .obj-grid h2{font-size:36px;margin:0}
+  .obj-list li{display:grid;grid-template-columns:15em 1fr;gap:28px;padding:18px 0}
+  .obj-list li:first-child{padding-top:4px}
+  .obj-list strong{margin:0}
+
+  /* Problem: narrow, starts at column 3 */
+  .problem{padding:128px 0}
+  .problem-text,.ledger{margin-left:16.66%}
+  .ledger{width:auto;margin-top:72px;margin-right:0;max-width:820px}
+
+  /* Proof: text right, window wide */
+  .proof{padding:88px 0 72px}
+  .proof-intro{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));column-gap:32px;max-width:1100px;margin:0 auto 40px}
+  .proof-intro .eyebrow{grid-column:1 / 8;grid-row:1}
+  .proof-intro h2{grid-column:1 / 8;grid-row:2;margin:0}
+  .proof-intro p:last-child{grid-column:8 / 13;grid-row:2;align-self:end}
+  .window{max-width:1100px;margin:0 auto}
+  .win-bar{padding:12px 20px}
+  .win-prospect{padding:22px 24px 0}
+  .steps-proof{display:grid;grid-template-columns:repeat(12,minmax(0,1fr))}
+  .ps{padding:20px 24px 22px}
+  .ps5 .rows{margin-top:10px}
+  .ps5 .rows li{padding:9px 0}
+  .ps+.ps{border-top:0}
+  .ps1{grid-column:span 3}
+  .ps2{grid-column:span 3;border-left:1px solid var(--rule)}
+  .ps3{grid-column:span 6;border-left:1px solid var(--rule)}
+  .ps4{grid-column:span 5;border-top:1px solid var(--ink)!important;background:var(--field)}
+  .ps5{grid-column:span 7;border-top:1px solid var(--ink)!important;border-left:1px solid var(--rule);background:var(--field)}
+  .ps4 .inbox-row,.ps5 .rows li{background:transparent}
+  .proof-end{flex-direction:row;align-items:center;justify-content:flex-end;gap:28px;max-width:1100px;margin:32px auto 0}
+  .proof-end p{text-align:right}
+
+  /* How it works: horizontal timeline, unequal stops */
+  .how-band{padding:72px 0}
+  .how-band h2{margin-bottom:56px}
+  .timeline{display:grid;grid-template-columns:3fr 3.3fr 5.4fr;gap:40px;border-left:0;border-top:2px solid var(--ink);margin-left:0}
+  .timeline>li{padding:30px 0 0}
+  .timeline>li::before{left:0;top:-8px}
+  .dated{gap:14px}
+
+  .assets{padding:96px 0}
+  .assets-grid{display:grid;grid-template-columns:180px minmax(0,960px);gap:0}
+  .assets-main{display:block}
+  .assets-gutter{margin-top:0;order:0}
+  .assets-main h3{font-size:36px}
+  .index thead{display:table-header-group}
+  .index thead,.index tbody{display:block}
+  .index thead tr{border-top:0;padding:0 0 8px}
+  .index th{text-align:left;font-family:var(--display);font-stretch:75%;font-weight:600;font-size:15px;color:var(--muted);padding:0}
+  .index tr{display:grid;grid-template-columns:17% 34% 1fr;gap:24px;align-items:baseline}
+  .index .sell{margin:0}
+  .index .looks{margin:0}
+
+  /* Plans: one rate sheet split by a vertical rule */
+  .plans{padding:96px 0}
+  .plans-head{margin-left:8.33%}
+  .rates{display:grid;grid-template-columns:1fr 1fr;max-width:920px;margin:0 auto 0 8.33%}
+  .rate{padding:32px 36px 36px}
+  .rate-app{border-right:1px solid var(--rule)}
+  .rate-coach{box-shadow:var(--shadow-paper-strong);margin:-10px -10px -10px 0;padding:42px 46px 46px 36px;z-index:2}
+  .price .amt{font-size:52px}
+  .rate .btn{width:auto;min-width:240px}
+  .rate-mm{grid-column:1/-1;display:grid;grid-template-columns:200px 1fr auto;gap:4px 32px;align-items:start;padding:24px 36px 26px}
+  .rate-mm .mm-head{grid-row:1 / span 3}
+  .rate-mm .mm-body{display:contents}
+  .rate-mm .mm-for{grid-column:2;grid-row:1;align-self:center}
+  .rate-mm .mm-list{grid-column:2 / 4;grid-row:2;margin:6px 0 2px}
+  .rate-mm .ph{margin:0;grid-column:2 / 4;grid-row:3}
+  .rate-mm .btn{grid-row:1;grid-column:3;width:auto}
+  .billing{margin-left:8.33%}
+
+  /* Answers: heading left, two-column fine print */
+  .answers{padding:64px 0}
+  .ans-grid{display:grid;grid-template-columns:3fr 9fr;gap:48px;align-items:start}
+  .answers h2{font-size:32px;margin:0}
+  .faq{display:grid;grid-template-columns:1fr 1fr;column-gap:40px}
+  .faq div:last-child{grid-column:1/-1}
+
+  /* Close: a short letter, off center */
+  .close{padding:128px 0 112px}
+  .letter{margin-left:25%}
+  .letter .btn-lg{width:auto}
+}
+
+
+/* Headline at 980 to 1119px: a wider text column so the H1 keeps 4 lines and never strands "Build a" */
+@media (min-width:980px) and (max-width:1119px){
+  .hero-grid{grid-template-columns:minmax(0,48fr) minmax(0,52fr);gap:36px}
+}
+
+/* MARKS:START */
+/* ==========================================================================
+   Client Pipeline v3: hand-made marks kit (Designer 2)
+   Paste everything between MARKS:START and MARKS:END into the page <style>.
+
+   Tokens. The creative direction gives hex values but no custom property
+   names, so the kit defines its own, prefixed --hm-. If the page already has
+   tokens for these, alias them here, e.g. --hm-grease: var(--pencil-red).
+   Marks drawn as data-URI backgrounds (highlight, strike, underline, bracket,
+   signature swash) bake their hex in, because CSS variables cannot reach
+   inside a data URI. Those hex values match the tokens below.
+   ========================================================================== */
+:root {
+  --hm-grease: #B3261E;      /* Grease pencil: circle, arrow, strike, stamp */
+  --hm-highlighter: #FFE066; /* Highlighter: behind quoted prospect words only */
+  --hm-graphite: var(--graphite); /* Pencil: notes, bracket, underline (#3D4A44) */
+  --hm-ink: var(--ink);           /* File ink: the signature (#10261D) */
+  --hm-hand: var(--hand);
+  --hm-label: var(--display);
+}
+
+/* Motion progress for the highlighter sweep. Registered so it can animate;
+   initial value 1 means every mark is fully drawn unless the scene plays. */
+@property --hm-p {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+
+/* Per-mark knobs. Defaults sit in :where() (zero specificity) so a page
+   rule like [data-mark-id="hero-arrow"] { --hm-arrow-turn: -30deg } always
+   wins, wherever it appears in the stylesheet. */
+:where(.hm-arrow) { --hm-arrow-len: 5em; --hm-arrow-turn: 0deg; --hm-arrow-bend: 1; --hm-arrow-dx: 0px; --hm-arrow-dy: 0px; }
+:where(.hm-note) { --hm-tilt: -1.5deg; }
+:where(.hm-stamp) { --hm-stamp-turn: -6deg; --hm-stamp-ink: var(--hm-grease); }
+:where(.hm-circle) { --hm-circle-ink: var(--hm-grease); }
+
+.hm { pointer-events: none; }
+.hm-note, .hm-sign { pointer-events: auto; }
+
+/* --------------------------------------------------------------------------
+   Inline SVG ink (circle and arrow). Paths use non-scaling strokes so the
+   line weight stays even when the loop stretches around a long phrase, and
+   the weight is set in em so it grows with the text.
+   -------------------------------------------------------------------------- */
+.hm-ink {
+  position: absolute;
+  max-width: none;   /* pages often set svg { max-width: 100% } */
+  overflow: visible;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+.hm-ink path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.hm-circle .hm-ink path { vector-effect: non-scaling-stroke; }
+/* Reveal paths live in a <mask> inside the hero circle and hero arrow.
+   They trace each stroke with a fat white line and are what actually
+   animates, so the visible strokes keep their weight and grain while the
+   draw-on stays accurate (animating the dash on the visible strokes is
+   unreliable in Chrome with non-scaling strokes and full-page capture). */
+.hm-ink path.hm-r {
+  stroke: #fff;
+  stroke-width: 18;
+  vector-effect: none;
+  opacity: 1;
+}
+.hm-arrow .hm-ink path.hm-r { stroke-width: 11; }
+
+/* --------------------------------------------------------------------------
+   1. Circle: freehand grease-pencil loop around inline words.
+   The loop is a lopsided stadium (not an ellipse, so it clears the corners
+   of the words), overshoots its start by about 15 degrees and does not close. Two overlapping strokes
+   (heavy, then a thin echo along the bottom) plus a short pressure stroke
+   where the pencil lands.
+   -------------------------------------------------------------------------- */
+.hm-circle {
+  position: relative;
+  display: inline-block;
+  color: inherit;
+}
+.hm-circle > .hm-ink {
+  top: -0.4em;
+  left: -0.55em;
+  width: calc(100% + 1.25em);   /* replaced element: size it explicitly */
+  height: calc(100% + 0.9em);
+  color: var(--hm-circle-ink);
+  opacity: 0.9;
+  filter: url(#hm-wax);
+}
+.hm-circle .hm-c1 { stroke-width: max(2.5px, 0.085em); }
+.hm-circle .hm-c2 { stroke-width: max(1.5px, 0.045em); opacity: 0.75; }
+.hm-circle .hm-c3 { stroke-width: max(3.2px, 0.11em); opacity: 0.85; }
+/* Fallback when the inline SVG was not pasted: a static loop. */
+.hm-circle:not(:has(> .hm-ink))::after {
+  content: "";
+  position: absolute;
+  top: -0.4em; left: -0.55em; right: -0.7em; bottom: -0.5em;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  opacity: 0.9;
+  background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 100' preserveAspectRatio='none'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' seed='7' result='t'/><feColorMatrix in='t' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2.4 2.2' result='m'/><feComposite in='SourceGraphic' in2='m' operator='in'/></filter><g filter='url(%23g)' fill='none' stroke='%23B3261E' stroke-linecap='round' stroke-linejoin='round'><path stroke-width='3.2' vector-effect='non-scaling-stroke' d='M360 26C332 14 252 8 170 7C100 6 34 5 14 12C4 18 2 34 3 52C4 70 8 88 34 93C100 100 262 99 340 95C381 93 397 80 397 57C397 34 388 16 350 9C320 4 280 1 236 2'/><path stroke-width='1.6' opacity='.75' vector-effect='non-scaling-stroke' d='M16 62C14 80 34 91 80 95C170 101 300 100 362 91'/></g></svg>") no-repeat 0 0 / 100% 100%;
+}
+
+/* --------------------------------------------------------------------------
+   2. Arrow: starts at the span's position. Aim it per data-mark-id with
+   three custom properties:
+     --hm-arrow-len   overall length (default 5em of the span's font size)
+     --hm-arrow-turn  rotation around the start point (0deg points right)
+     --hm-arrow-bend  1 bows upward, -1 bows downward
+     --hm-arrow-dx/dy nudge the start point
+   Put the arrow span INSIDE a .hm-circle (after the words) and it starts
+   from the right edge of the loop, and can never wrap onto its own line.
+   -------------------------------------------------------------------------- */
+.hm-arrow {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 0;
+  vertical-align: middle;
+  color: var(--hm-grease);
+}
+.hm-circle > .hm-arrow {
+  position: absolute;
+  left: calc(100% + 0.62em);
+  top: 50%;
+}
+.hm-arrow > .hm-ink,
+.hm-arrow:not(:has(> .hm-ink))::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--hm-arrow-len) * -0.025 + var(--hm-arrow-dx));
+  top: calc(var(--hm-arrow-len) * -0.3125 + var(--hm-arrow-dy));
+  width: var(--hm-arrow-len);
+  height: calc(var(--hm-arrow-len) * 0.5);
+  transform-origin: 2.5% 62.5%;
+  transform: rotate(var(--hm-arrow-turn)) scaleY(var(--hm-arrow-bend));
+  opacity: 0.9;
+}
+.hm-arrow > .hm-ink { filter: url(#hm-wax); }
+.hm-arrow .hm-a1 { stroke-width: 3.3; }
+.hm-arrow .hm-a2 { stroke-width: 1.6; opacity: 0.7; }
+.hm-arrow .hm-a3 { stroke-width: 2.9; }
+.hm-arrow:not(:has(> .hm-ink))::after {
+  mix-blend-mode: multiply;
+  background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 80'><g fill='none' stroke='%23B3261E' stroke-linecap='round' stroke-linejoin='round'><path stroke-width='3.4' d='M4 50C20 33 48 18 86 16C112 15 133 23 149 39'/><path stroke-width='1.6' opacity='.7' d='M24 34C46 22 70 18 96 19'/><path stroke-width='3' d='M143 21C145 28 147 35 150 41C146 39 141 38 135 37'/></g></svg>") no-repeat 0 0 / 100% 100%;
+}
+
+/* --------------------------------------------------------------------------
+   3. Highlighter swipe. Three background layers per line: a chisel-tip
+   start (with pooled ink), a stretched body with wavy edges and streaks,
+   and a chisel-tip end. box-decoration-break: clone gives every wrapped
+   line its own ragged ends. Runs 0.16em past the text on both sides.
+   -------------------------------------------------------------------------- */
+.hm-highlight {
+  --hm-p: 1;
+  color: inherit;
+  padding: 0.03em 0.16em 0.01em;
+  margin: 0 -0.16em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  mix-blend-mode: multiply;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-image:
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 40' preserveAspectRatio='none'><path fill='%23FFE066' d='M20 6.6L7.6 7C5.8 7.1 5 7.9 4.6 9.4L1.2 34.2C1 35.9 1.8 36.9 3.5 37L20 37.2Z'/><path fill='%23F7D244' d='M7.6 7C5.8 7.1 5 7.9 4.6 9.4L1.2 34.2C1 35.9 1.8 36.9 3.5 37L9.4 37.1C7.8 29.6 8.1 15.6 11 6.9Z'/><path fill='%23F9D64C' d='M9 31.6L20 31.2L20 33.8L8.8 34.3Z'/></svg>"),
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 40' preserveAspectRatio='none'><path fill='%23FFE066' d='M0 5.2L15.8 4.7C17.6 4.7 18.7 5.6 18.5 7.4L14.7 33.4C14.4 34.9 13.5 35.6 11.9 35.6L0 35.6Z'/><path fill='%23F9D64C' d='M0 29.9L15.4 29.4L15 32L0 32.4Z'/><path fill='%23F7D244' d='M10.6 4.9L15.8 4.7C17.6 4.7 18.7 5.6 18.5 7.4L14.7 33.4C14.4 34.9 13.5 35.6 11.9 35.6L8.4 35.6C10.6 27 11.4 14 10.6 4.9Z'/></svg>"),
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 40' preserveAspectRatio='none'><path fill='%23FFE066' d='M0 6.6C18 5.4 34 7.4 56 6.2C80 4.9 98 6.8 122 5.6C146 4.4 166 6.4 200 5.2L200 35.6C176 36.8 158 34.9 134 36C108 37.2 88 35.4 62 36.6C38 37.6 20 35.9 0 37.2Z'/><path fill='%23FFEB94' d='M0 9.6C40 8.6 80 10.2 120 9C150 8.2 176 9.2 200 8.2L200 10.4C176 11.4 150 10.6 120 11.4C80 12.4 40 10.8 0 11.8Z'/><path fill='%23FCDB58' d='M0 20.4C50 19.6 110 21.2 200 19.6L200 20.8C110 22.6 50 21 0 21.8Z'/><path fill='%23F9D64C' d='M0 31.6C40 30.8 90 32.2 140 31C164 30.4 184 30.6 200 29.9L200 32.4C184 33 164 33 140 33.6C90 34.8 40 33.4 0 34.3Z'/></svg>");
+  background-size:
+    calc(0.5em * min(1, var(--hm-p) * 10)) 100%,
+    calc(0.5em * min(1, var(--hm-p) * 10)) 100%,
+    calc((100% - 0.8em) * var(--hm-p) + 0.01em) 100%;
+  background-position:
+    0 0,
+    calc(100% * var(--hm-p) + 0.3em * (1 - var(--hm-p))) 0,
+    0.4em 0;
+}
+
+/* --------------------------------------------------------------------------
+   4. Strike-through: one quick grease-pencil stroke per line, heavier where
+   it lands, tapering as it lifts, with a thin second edge. Grain is baked
+   into the SVG. Overshoots the words by 0.14em each side.
+   -------------------------------------------------------------------------- */
+.hm-strike {
+  color: inherit;
+  text-decoration: none;
+  padding: 0 0.14em;
+  margin: 0 -0.14em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 24' preserveAspectRatio='none'><filter id='g' x='0' y='0' width='1' height='1'><feTurbulence type='fractalNoise' baseFrequency='.9 .45' numOctaves='2' seed='4' result='t'/><feColorMatrix in='t' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2.1 2.05' result='m'/><feComposite in='SourceGraphic' in2='m' operator='in'/></filter><g filter='url(%23g)' fill='%23B3261E'><path d='M1.2 14.4C2.4 10.8 6 9.4 12 9.2C50 8.6 94 7.8 134 6.9C160 6.3 182 5.6 196.6 5.2C199 5.2 199.6 6.3 198.2 7.4C188 9.4 166 11 134 12.2C96 13.6 52 14.9 13 16.2C7 16.4 2.6 16.6 1.4 15.8C.8 15.4 .8 14.8 1.2 14.4Z'/><path opacity='.55' d='M20 15.6C70 14.2 128 12.6 190 10.6L190.4 11.8C128 14 70 15.8 20.2 17Z'/></g></svg>") no-repeat 0 56% / 100% 0.72em;
+}
+
+/* --------------------------------------------------------------------------
+   5. Underline: graphite pencil, lands with a small hook, wobbles, and
+   flicks up as it lifts. Wraps line by line.
+   -------------------------------------------------------------------------- */
+.hm-underline {
+  color: inherit;
+  padding: 0 0.08em 0.04em;
+  margin: 0 -0.08em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 14' preserveAspectRatio='none'><filter id='g' x='0' y='0' width='1' height='1'><feTurbulence type='fractalNoise' baseFrequency='1.1 .3' numOctaves='2' seed='9' result='t'/><feColorMatrix in='t' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2.1 2.0' result='m'/><feComposite in='SourceGraphic' in2='m' operator='in'/></filter><path filter='url(%23g)' fill='%233D4A44' opacity='.88' d='M1 5.8C2 4 4.2 4.2 6.8 5.4C30 6.8 70 7.2 110 6.6C140 6.2 168 5.3 186 4C192 3.5 196.5 2.6 199 1.4C199.7 1.8 199.3 2.9 197.6 4C190 7.6 168 9.6 136 10.6C96 11.6 52 11.4 10 10.2C5.4 10 2.4 9.2 1.3 8C.7 7.2 .6 6.4 1 5.8Z'/></svg>") no-repeat 0 100% / 100% 0.36em;
+}
+
+/* --------------------------------------------------------------------------
+   6. Margin note: Kalam in graphite, a little off the baseline grid.
+   Placement (gutter on desktop, inline under its subject on phone) is set
+   per data-mark-id in the page. Tilt per note with --hm-tilt.
+   -------------------------------------------------------------------------- */
+.hm-note {
+  display: inline-block;
+  max-width: 15em;
+  font-family: var(--hm-hand);
+  font-weight: 400;
+  font-size: 1.25rem;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--hm-graphite);
+  opacity: 0.94;
+  transform: rotate(var(--hm-tilt));
+  transform-origin: 0 60%;
+  text-wrap: balance;
+}
+@media (max-width: 979px) {
+  .hm-note { font-size: 1.125rem; }
+}
+
+/* --------------------------------------------------------------------------
+   7. Rubber stamp: condensed caps in a double border, tilted, with uneven
+   ink: a speckle mask on everything, plus heavier wear and a pressure
+   gradient on the border. Keep it on a light surface (white sheet or
+   paper): red on the dark desk fails contrast.
+   -------------------------------------------------------------------------- */
+.hm-stamp {
+  position: relative;
+  display: inline-block;
+  padding: 0.52em 0.72em 0.44em 0.8em;
+  font-family: var(--hm-label);
+  font-stretch: 62%;
+  font-weight: 800;
+  font-size: 0.9375rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--hm-stamp-ink);
+  opacity: 0.9;
+  mix-blend-mode: multiply;
+  transform: rotate(var(--hm-stamp-turn));
+  text-shadow: 0.05em 0.035em 0 rgba(179, 38, 30, 0.28);
+  -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='150' height='70'><filter id='n' x='0' y='0' width='1' height='1'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' seed='11'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -4 3.35'/></filter><rect width='150' height='70' filter='url(%23n)'/></svg>") 0 0 / 150px 70px repeat;
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='150' height='70'><filter id='n' x='0' y='0' width='1' height='1'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' seed='11'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -4 3.35'/></filter><rect width='150' height='70' filter='url(%23n)'/></svg>") 0 0 / 150px 70px repeat;
+}
+.hm-stamp::before,
+.hm-stamp::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  border: 0 solid currentColor;
+}
+.hm-stamp::before {
+  inset: 0;
+  border-width: 0.17em;
+  border-radius: 3px 5px 2px 4px;
+  -webkit-mask:
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='60'><filter id='n' x='0' y='0' width='1' height='1'><feTurbulence type='fractalNoise' baseFrequency='.55' numOctaves='3' seed='5'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -4.4 3.3'/></filter><rect width='120' height='60' filter='url(%23n)'/></svg>") 0 0 / 120px 60px repeat,
+    linear-gradient(104deg, rgba(0,0,0,.55), #000 34%, #000 72%, rgba(0,0,0,.7));
+  -webkit-mask-composite: source-in;
+  mask:
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='60'><filter id='n' x='0' y='0' width='1' height='1'><feTurbulence type='fractalNoise' baseFrequency='.55' numOctaves='3' seed='5'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -4.4 3.3'/></filter><rect width='120' height='60' filter='url(%23n)'/></svg>") 0 0 / 120px 60px repeat,
+    linear-gradient(104deg, rgba(0,0,0,.55), #000 34%, #000 72%, rgba(0,0,0,.7));
+  mask-composite: intersect;
+}
+.hm-stamp::after {
+  inset: 0.27em 0.26em 0.25em 0.28em;
+  border-width: 1px;
+  border-radius: 2px;
+  opacity: 0.85;
+}
+
+/* --------------------------------------------------------------------------
+   8. Bracket: graphite pencil bracket down the side of a block. Put the
+   span inside the block and give the block position: relative. Built from
+   a top hook, a stretched spine and a bottom hook so the hooks never
+   distort however tall the block is. data-side="right" mirrors it.
+   -------------------------------------------------------------------------- */
+.hm-bracket {
+  position: absolute;
+  top: 0.2em;
+  bottom: 0.1em;
+  left: -1.9em;
+  width: 1.55em;
+  opacity: 0.92;
+  mix-blend-mode: multiply;
+  background-repeat: no-repeat;
+  background-image:
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 60' preserveAspectRatio='none'><filter id='g' x='0' y='0' width='1' height='1'><feTurbulence type='fractalNoise' baseFrequency='.45 .9' numOctaves='2' seed='2' result='t'/><feColorMatrix in='t' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2 1.95' result='m'/><feComposite in='SourceGraphic' in2='m' operator='in'/></filter><path filter='url(%23g)' fill='%233D4A44' d='M24.5 4.4C20 3.6 13.6 4.6 9.6 7.6C6.8 9.8 5.8 13.6 5.8 19L5.6 60L9.2 60L9.4 20C9.5 14.8 10.4 12.2 12.8 10.4C16 8.2 20.4 7.4 24.2 7.2C26 7.1 26.2 4.8 24.5 4.4Z'/></svg>"),
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 60' preserveAspectRatio='none'><filter id='g' x='0' y='0' width='1' height='1'><feTurbulence type='fractalNoise' baseFrequency='.45 .9' numOctaves='2' seed='8' result='t'/><feColorMatrix in='t' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2 1.95' result='m'/><feComposite in='SourceGraphic' in2='m' operator='in'/></filter><path filter='url(%23g)' fill='%233D4A44' d='M4.6 0L4.8 38C5 45.6 6.6 50 10.6 52.4C15.6 55.2 22 55.6 28.6 54C29.8 53.7 29.6 52 28.2 52C22 52.6 16.8 52.2 13 50.4C9.6 48.8 8.4 45.6 8.2 38.2L8.2 0Z'/></svg>"),
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 100' preserveAspectRatio='none'><filter id='g' x='0' y='0' width='1' height='1'><feTurbulence type='fractalNoise' baseFrequency='.5 .12' numOctaves='2' seed='3' result='t'/><feColorMatrix in='t' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2 1.95' result='m'/><feComposite in='SourceGraphic' in2='m' operator='in'/></filter><g filter='url(%23g)' fill='%233D4A44'><path d='M5.6 0C4.4 10 1.6 24 1 40C.4 56 2.6 68 3.8 78C4.8 88 4.4 95 4.6 100L8.2 100C8 95 8.4 88 7.4 78C6.2 68 4 56 4.6 40C5.2 24 8 10 9.2 0Z'/><path opacity='.5' d='M6.6 16C4.4 26 3 34 2.8 46C2.6 56 3.8 64 5 72L5.8 72C4.6 64 3.6 56 3.8 46C4 34 5.4 26 7.6 16Z'/></g></svg>");
+  background-size: 100% 2em, 100% 2em, 100% calc(100% - 3.9em);
+  background-position: 0 0, 0 100%, 0 1.95em;
+}
+.hm-bracket[data-side="right"] {
+  left: auto;
+  right: -1.9em;
+  transform: scaleX(-1);
+}
+
+/* --------------------------------------------------------------------------
+   9. Signature: Kalam in file ink, tilted, with a quick swash under it.
+   -------------------------------------------------------------------------- */
+.hm-sign {
+  display: inline-block;
+  padding: 0 0.35em 0.28em 0.04em;
+  font-family: var(--hm-hand);
+  font-weight: 400;
+  font-size: 2.4em;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--hm-ink);
+  opacity: 0.92;
+  transform: rotate(-5deg) skewX(-6deg);
+  transform-origin: 0 100%;
+  background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 30' preserveAspectRatio='none'><path fill='%2310261D' opacity='.85' d='M3 15.5C30 21 80 21.6 130 16.6C160 13.6 182 9.6 196 4.4C198.2 3.8 198.8 5.2 197.2 6.2C180 14 150 20.4 120 23.4C80 27 34 25.6 5.6 19C2.2 18.2 1.2 16 3 15.5Z'/></svg>") no-repeat 0 100% / 100% 0.36em;
+}
+
+/* --------------------------------------------------------------------------
+   Phone: arrows are hidden (notes drop inline under what they annotate).
+   Match this breakpoint to the page's. Hidden with visibility, not
+   display: none, because display: none cancels the draw-on and would replay
+   it whenever the window crosses the breakpoint. overflow: hidden keeps the
+   hidden arrow from adding sideways scroll.
+   -------------------------------------------------------------------------- */
+@media (max-width: 979px) {
+  .hm-arrow { visibility: hidden; overflow: hidden; }
+}
+
+/* --------------------------------------------------------------------------
+   The one motion moment. Put class="hm-scene" on the hero. On load, once:
+   at 0.40s the circle draws, then the arrow, the note fades in, and the
+   email highlighter sweeps. Done by about 1.8s. Nothing else on the page
+   animates. Under reduced motion none of this applies and every mark is
+   simply there.
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  .hm-scene .hm-ink .hm-r {
+    stroke-dasharray: 1 2;
+    animation: hm-draw var(--hm-dur, 0.65s) cubic-bezier(.42, .08, .5, .96) var(--hm-at, 0.4s) both;
+  }
+  .hm-scene .hm-circle .hm-c3 { --hm-at: 0.4s;  --hm-dur: 0.09s; }
+  .hm-scene .hm-circle .hm-c1 { --hm-at: 0.4s;  --hm-dur: 0.65s; }
+  .hm-scene .hm-circle .hm-c2 { --hm-at: 0.64s; --hm-dur: 0.22s; }
+  .hm-scene .hm-arrow  .hm-a1 { --hm-at: 1.06s; --hm-dur: 0.2s; }
+  .hm-scene .hm-arrow  .hm-a2 { --hm-at: 1.09s; --hm-dur: 0.13s; }
+  .hm-scene .hm-arrow  .hm-a3 { --hm-at: 1.27s; --hm-dur: 0.09s; }
+  .hm-scene .hm-note {
+    animation: hm-fade 0.2s ease-out 1.3s both;
+  }
+  .hm-scene .hm-highlight {
+    animation: hm-sweep 0.38s cubic-bezier(.3, .1, .3, 1) 1.42s both;
   }
 }
-:root[data-theme="dark"]{
-  --bg:#0B1310; --surface:#15211C; --ink:#EAF2EE; --muted:#A7B8B0; --line:#2A3A33;
-  --accent:#3CC68F; --on-accent:#0B1A14; --soft:#1A2E26;
-  --hero:#123326; --hero-ink:#FFFFFF; --hero-muted:#BFD0C8; --hero-line:#2F5444;
-  --hot:#F2CF4A; --on-hot:#1B1A08; color-scheme:dark;
+@keyframes hm-draw { from { stroke-dashoffset: 1.05; } to { stroke-dashoffset: 0; } }
+@keyframes hm-fade { from { opacity: 0; } }
+@keyframes hm-sweep { from { --hm-p: 0; } to { --hm-p: 1; } }
+
+/* ==========================================================================
+   Page placement for this page's hooks (Designer 1's positions, kept and
+   adjusted for the kit). The page's phone/tablet layout runs to 979px.
+   ========================================================================== */
+mark.hl{background:transparent;color:inherit}
+
+/* Hero circle: the page's boldest moment, so a heavier grease pencil here */
+[data-mark-id="hero-circle"] .hm-c1{stroke-width:max(3px,.13em)}
+[data-mark-id="hero-circle"] .hm-c2{stroke-width:max(1.6px,.06em)}
+[data-mark-id="hero-circle"] .hm-c3{stroke-width:max(3.6px,.16em)}
+[data-mark-id="hero-arrow"] .hm-a1{stroke-width:4}
+[data-mark-id="hero-arrow"] .hm-a2{stroke-width:1.8}
+[data-mark-id="hero-arrow"] .hm-a3{stroke-width:3.6}
+/* Air around the circled line so the loop clears the label above and the subline below */
+[data-mark-id="hero-circle"]{margin:.34em 0 .5em .2em}
+/* When the clipping is too narrow for one line, the headline wraps to two
+   balanced lines; cap the circle's box so the loop hugs them instead of
+   running to the sheet edge. */
+.clip-h{container-type:inline-size}
+@container (max-width:15.6em){
+  [data-mark-id="hero-circle"]{max-width:8.6em}
 }
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.5}
-p,h1,h2,h3,ul,ol,dl,dd,figure{margin:0}
-ul,ol{padding:0;list-style:none}
-.inner{max-width:1120px;margin:0 auto;padding:0 20px}
-section{padding:60px 0}
-h1,h2,h3{font-family:var(--display);text-wrap:balance;letter-spacing:-0.015em}
-h1{font-weight:800;font-size:clamp(38px,7.6vw,68px);line-height:1.02}
-h2{font-weight:700;font-size:clamp(28px,4.6vw,42px);line-height:1.08;max-width:20ch}
-h3{font-weight:700;font-size:19px;line-height:1.2}
-.mono{font-family:var(--mono);font-size:12px;letter-spacing:0.04em;text-transform:uppercase}
-.muted{color:var(--muted)}
-.sub{margin-top:12px;max-width:44em;color:var(--muted);font-size:18px}
-a{color:var(--accent)}
-:focus-visible{outline:3px solid var(--hot);outline-offset:3px}
-.btn{display:inline-flex;align-items:center;justify-content:center;min-height:52px;padding:14px 26px;border-radius:8px;background:var(--accent);color:var(--on-accent);font-weight:600;font-size:17px;text-decoration:none;transition:transform .15s ease}
-.btn:hover{transform:translateY(-2px)}
-.btn.hot{background:var(--hot);color:var(--on-hot)}
-.btn.small{min-height:44px;padding:8px 16px;font-size:15px}
-.btn.line{background:transparent;color:var(--ink);border:1.5px solid var(--ink)}
-.chip{display:inline-flex;align-items:center;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;border:1px solid var(--line);white-space:nowrap;color:var(--muted)}
-.chip.sent{background:var(--soft);border-color:transparent;color:var(--ink)}
-.chip.replied{background:var(--hot);border-color:transparent;color:var(--on-hot)}
-.chip.booked{background:var(--accent);border-color:transparent;color:var(--on-accent)}
 
-/* hero */
-.hero{background:var(--hero);color:var(--hero-ink);padding:18px 0 0}
-.bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding-bottom:44px}
-.brand{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-family:var(--display);font-weight:800;font-size:20px;color:var(--hero-ink);text-decoration:none}
-.brand .tag{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border:1px solid var(--hero-line);border-radius:999px;color:var(--hero-muted)}
-.hero-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:40px}
-.pitch{display:flex;flex-direction:column;gap:20px;align-items:flex-start;padding-bottom:8px}
-.pitch .mono{color:var(--hot)}
-.pitch em{font-style:normal;color:var(--hot)}
-.pitch .lede{font-size:19px;color:var(--hero-muted);max-width:33em}
-.pitch .fine{font-size:14px;color:var(--hero-muted)}
-
-/* product window */
-.app{background:var(--surface);color:var(--ink);border-radius:12px 12px 0 0;border:1px solid var(--hero-line);border-bottom:0;overflow:hidden}
-.app-top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line)}
-.app-top .mono{color:var(--muted)}
-.stages{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid var(--line)}
-.stages div{padding:12px 10px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
-.stages div:first-child{border-left:0}
-.stages b{font-family:var(--display);font-weight:800;font-size:28px;line-height:1;font-variant-numeric:tabular-nums}
-.stages span{font-size:12px;color:var(--muted)}
-.stages .on{background:var(--soft)}
-.rows li{padding:14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
-.rows li:last-child{border-bottom:0}
-.row-head{display:flex;gap:10px;align-items:center;justify-content:space-between}
-.row-head b{display:block;font-weight:600;font-size:15px}
-.row-head span.who{font-size:13px;color:var(--muted)}
-.finding{background:var(--soft);border-left:3px solid var(--accent);border-radius:0 6px 6px 0;padding:10px 12px;display:flex;flex-direction:column;gap:4px;font-size:14px}
-.finding .mono{color:var(--accent)}
-.seq{display:flex;flex-wrap:wrap;gap:6px}
-
-/* compare */
-.compare{margin-top:32px;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}
-.compare .head,.compare li{display:grid;grid-template-columns:minmax(0,1fr)}
-.compare .head{display:none}
-.compare li{border-top:1px solid var(--line)}
-.compare li:first-child{border-top:0}
-.compare .cell{padding:14px 16px;display:flex;flex-direction:column;gap:4px}
-.compare .then{color:var(--muted)}
-.compare .now{background:var(--soft);font-weight:500}
-.compare .cell .mono{color:var(--muted)}
-
-/* steps */
-.band{background:var(--surface);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-.steps{display:grid;grid-template-columns:minmax(0,1fr);gap:0;margin-top:32px}
-.steps li{position:relative;padding:0 0 26px 52px;display:flex;flex-direction:column;gap:6px}
-.steps li::before{content:"";position:absolute;left:17px;top:36px;bottom:0;width:2px;background:var(--line)}
-.steps li:last-child::before{display:none}
-.steps .n{position:absolute;left:0;top:0;width:36px;height:36px;border-radius:50%;background:var(--ink);color:var(--bg);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:800;font-size:16px}
-.steps li:last-child .n{background:var(--hot);color:var(--on-hot)}
-
-/* asset table */
-.index{margin-top:32px;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}
-.index li{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;padding:16px;border-top:1px solid var(--line)}
-.index li:first-child{border-top:0}
-.index .sell{font-size:14px;color:var(--muted)}
-.index .lead{font-family:var(--display);font-weight:700;font-size:19px;line-height:1.2}
-.index .what{font-size:15px;color:var(--muted)}
-
-/* features */
-.tiles{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin-top:32px}
-.tiles li{background:var(--bg);border:1px solid var(--line);border-top:3px solid var(--accent);border-radius:8px;padding:18px;display:flex;flex-direction:column;gap:6px}
-.tiles p{font-size:15px;color:var(--muted)}
-
-/* plans */
-.plans{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;margin-top:32px}
-.plan{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:24px 20px;display:flex;flex-direction:column;gap:14px}
-.plan.main{border:2px solid var(--accent)}
-.price{display:flex;align-items:baseline;gap:8px;font-family:var(--display);font-weight:800;font-size:42px;line-height:1}
-.price small{font-family:var(--body);font-weight:400;font-size:16px;color:var(--muted)}
-.plan ul{display:flex;flex-direction:column;gap:9px;flex:1;font-size:16px}
-.plan li{display:flex;gap:10px;align-items:flex-start}
-.plan li svg{flex:none;margin-top:4px;color:var(--accent)}
-
-/* answers */
-.answers{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;margin-top:32px}
-.answers dt{font-weight:600;font-size:18px;margin-bottom:4px}
-.answers dd{color:var(--muted);max-width:60ch;font-size:16px}
-
-/* close */
-.close{background:var(--hero);color:var(--hero-ink)}
-.close .inner{display:flex;flex-direction:column;gap:20px;align-items:flex-start}
-.close p{color:var(--hero-muted)}
-.setup{border:2px dashed var(--hero-line);border-radius:8px;padding:12px 14px;font-size:15px}
-footer{padding:24px 0 40px;font-size:14px;color:var(--muted)}
-footer .inner{display:flex;flex-wrap:wrap;gap:6px 22px}
-
-@media (min-width:760px){
-  section{padding:84px 0}
-  .compare .head{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-bottom:1px solid var(--line)}
-  .compare .head span{padding:10px 16px;color:var(--muted)}
-  .compare li{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .compare .cell .mono{display:none}
-  .steps{grid-template-columns:repeat(4,minmax(0,1fr));gap:24px}
-  .steps li{padding:52px 0 0 0}
-  .steps li::before{left:44px;right:-24px;top:17px;bottom:auto;width:auto;height:2px}
-  .index li{grid-template-columns:minmax(0,.8fr) minmax(0,1fr) minmax(0,1.5fr);gap:20px;align-items:baseline;padding:16px 20px}
-  .tiles{grid-template-columns:repeat(3,minmax(0,1fr))}
-  .plans{grid-template-columns:repeat(3,minmax(0,1fr))}
-  .answers{grid-template-columns:repeat(2,minmax(0,1fr));gap:30px 48px}
+/* Below 980px: 0.2em more room on the left so the loop clears the "c" of "comfort" */
+@media (max-width:979px){
+  [data-mark-id="hero-circle"]{margin-left:.35em}
+  [data-mark-id="hero-circle"]>.hm-ink{left:-.75em;width:calc(100% + 1.45em)}
 }
+
+/* Notes: phones show them as a block under what they annotate */
+.hm-note{display:block;width:fit-content}
+.email .hm-note{margin:6px 0 2px}
+.assets-gutter .hm-note{margin-bottom:6px}
+.rate-coach .hm-note{margin:-4px 0 12px}
+
+/* Stamp: Dana's row in the window (a light row: #F7F9F5) */
+.rows .hm-stamp{justify-self:start;margin:2px 0 4px 2px}
+@media (min-width:600px){.rows .hm-stamp{justify-self:end;margin:0 6px 0 0}}
+
+/* Bracket: hidden on phone, beside App + coaching from 980px */
+.rate-coach .hm-bracket{display:none}
+
 @media (min-width:980px){
-  .hero-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:48px;align-items:end}
-  .pitch{padding-bottom:64px}
+  /* Hero note: folder gutter left of email 1, level with the highlight */
+  .email .hm-note{position:absolute;left:-30%;top:128px;width:27%;margin:0;--hm-tilt:-2deg}
+  /* Hero arrow: from the left end of the circled words, out past the
+     clipping's left margin and down into the gutter to the note */
+  [data-mark-id="hero-circle"]>[data-mark-id="hero-arrow"]{left:-0.7em;top:55%;--hm-arrow-len:12.5rem;--hm-arrow-turn:92.5deg;--hm-arrow-bend:-.6}
+  /* Asset index note: left gutter, level with the first row */
+  .assets-gutter{position:relative}
+  .assets-gutter .hm-note{position:absolute;top:236px;left:0;width:150px;margin:0;--hm-tilt:-2deg}
+  /* Coaching bracket: just inside the column's right edge */
+  .rate-coach .hm-bracket{display:block;top:30px;bottom:30px;left:auto;right:8px}
 }
-@media (prefers-reduced-motion: reduce){
-  html{scroll-behavior:auto}
-  .btn{transition:none}
-  .btn:hover{transform:none}
+@media (min-width:1240px){
+  /* ...and outside the sheet, with the note beside it */
+  .rate-coach .hm-bracket{right:-40px}
+  .rate-coach .hm-note{position:absolute;left:calc(100% + 50px);top:44%;width:126px;margin:0;--hm-tilt:-1deg}
 }
+@media (prefers-reduced-motion:reduce){
+  .hm,.hm *{animation:none!important;transition:none!important}
+}
+/* MARKS:END */
 </style>
 </head>
 <body>
+<!-- Hand-made marks: shared grease-pencil grain for the inline-SVG circle and arrow -->
+<svg class="hm-defs" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+  <filter id="hm-wax" x="-4%" y="-8%" width="108%" height="116%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="1.05" numOctaves="2" seed="7" result="t"/>
+    <feColorMatrix in="t" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.5 2.3" result="m"/>
+    <feComposite in="SourceGraphic" in2="m" operator="in" result="g"/>
+    <feDisplacementMap in="g" in2="t" scale="1.6" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
 
-<header class="hero">
-  <div class="inner">
-    <div class="bar">
-      <a class="brand" href="#top">Client Pipeline <span class="tag">Early access</span></a>
-      <a class="btn hot small js-apply" href="#early-access">Request early access</a>
-    </div>
-    <div class="hero-grid">
-      <div class="pitch">
-        <p class="mono">The outbound system for marketing agencies</p>
-        <h1>Build a client pipeline that <em>doesn't wait on referrals</em></h1>
-        <p class="lede">Pick the prospects you want. Lead every email with a real finding about their business, written in your voice. See where each one stands, from drafted to call booked.</p>
-        <a class="btn hot js-apply" href="#early-access">Request early access</a>
-        <p class="fine">Plans from $300 a month. You send every email yourself.</p>
-      </div>
-
-      <figure class="app" aria-label="Example view of a Client Pipeline workspace">
-        <div class="app-top">
-          <span class="mono">Workspace · Your agency</span>
-          <span class="chip">Example data</span>
-        </div>
-        <div class="stages">
-          <div><b>7</b><span>Drafted</span></div>
-          <div><b>6</b><span>Sent</span></div>
-          <div class="on"><b>1</b><span>Replied</span></div>
-          <div><b>1</b><span>Call booked</span></div>
-        </div>
-        <ul class="rows">
-          <li>
-            <div class="row-head"><div><b>Regional HVAC company</b><span class="who">Dana, owner</span></div><span class="chip replied">Replied</span></div>
-            <div class="finding"><span class="mono">Finding</span><p>The headline says "Excellence in comfort solutions." A visitor can't tell what they install or who they serve.</p></div>
-            <div class="seq"><span class="chip sent">Email 1 sent</span><span class="chip sent">Day 3 sent</span><span class="chip">Day 10 ready</span><span class="chip">Full audit ready to build</span></div>
-          </li>
-          <li><div class="row-head"><div><b>Family dental group</b><span class="who">Priya, practice manager</span></div><span class="chip booked">Call booked</span></div></li>
-          <li><div class="row-head"><div><b>Commercial roofing contractor</b><span class="who">Marcus, president</span></div><span class="chip sent">Sent</span></div></li>
-          <li><div class="row-head"><div><b>Boutique law firm</b><span class="who">Elena, managing partner</span></div><span class="chip">Drafted</span></div></li>
-        </ul>
-      </figure>
-    </div>
+<header class="nav">
+  <div class="wrap nav-in">
+    <span class="brand">Client Pipeline</span>
+    <span class="tag">Early access</span>
+    <a class="btn btn-sm nav-btn js-apply" href="#early-access">Request early access</a>
   </div>
 </header>
 
-<section id="why">
-  <div class="inner">
-    <h2>Referrals built your agency. Outbound grows it on your schedule.</h2>
-    <p class="sub">You're good at the work. You shouldn't have to wait for someone to mention your name before you get to prove it.</p>
-    <div class="compare">
-      <div class="head mono"><span>Waiting on referrals</span><span>Running a pipeline</span></div>
-      <ul>
-        <li><div class="cell then"><span class="mono">Waiting on referrals</span>New business shows up when someone remembers to refer you.</div><div class="cell now"><span class="mono">Running a pipeline</span>You choose who to go after, and you work that list every week.</div></li>
-        <li><div class="cell then"><span class="mono">Waiting on referrals</span>Cold emails that sound like every other agency's.</div><div class="cell now"><span class="mono">Running a pipeline</span>Every email opens with a real finding about their business, with the evidence quoted.</div></li>
-        <li><div class="cell then"><span class="mono">Waiting on referrals</span>Outbound lives in someone's head and a spreadsheet.</div><div class="cell now"><span class="mono">Running a pipeline</span>Targeting, voice, drafts, and status in one workspace.</div></li>
-        <li><div class="cell then"><span class="mono">Waiting on referrals</span>Follow-up happens when there's time.</div><div class="cell now"><span class="mono">Running a pipeline</span>Three emails drafted up front, so the second and third are ready to send.</div></li>
-      </ul>
+<main>
+
+<!-- 1. Hero -->
+<section class="hero hm-scene" aria-labelledby="hero-h">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow">For marketing agencies that are good at the work</p>
+      <h1 id="hero-h">Build a client pipeline that doesn't wait on referrals.</h1>
+      <p class="lede">Paste in a prospect's homepage, ads, or welcome email. Client Pipeline gives you one specific finding, quoted in their own words, and three emails in your voice that lead with it.</p>
+      <a class="btn btn-lg js-apply" href="#early-access">Request early access</a>
+      <p class="fine">Plans from $300 a month. You send every email yourself.</p>
+    </div>
+
+    <figure class="folder">
+      <div class="folder-tab"><span class="flabel">Prospect file: regional HVAC company</span></div>
+      <div class="folder-body">
+        <div class="sheet clip">
+          <p class="label-row"><span class="tag">Example</span><span class="flabel">Their homepage, as you pasted it</span></p>
+          <p class="clip-h"><span class="hm hm-circle" data-mark-id="hero-circle">Excellence in comfort solutions<span class="hm hm-arrow" data-mark-id="hero-arrow" aria-hidden="true"><svg class="hm-ink" viewBox="0 0 160 80" aria-hidden="true" focusable="false"><mask id="hm-reveal-arrow" maskUnits="userSpaceOnUse" x="-10" y="-10" width="180" height="100"><path class="hm-r hm-a1" pathLength="1" d="M4 50C20 33 48 18 86 16C112 15 133 23 149 39"/><path class="hm-r hm-a2" pathLength="1" d="M24 34C46 22 70 18 96 19"/><path class="hm-r hm-a3" pathLength="1" d="M143 21C145 28 147 35 150 41C146 39 141 38 135 37"/></mask><g mask="url(#hm-reveal-arrow)"><path class="hm-a1" d="M4 50C20 33 48 18 86 16C112 15 133 23 149 39"/><path class="hm-a2" d="M24 34C46 22 70 18 96 19"/><path class="hm-a3" d="M143 21C145 28 147 35 150 41C146 39 141 38 135 37"/></g></svg></span><svg class="hm-ink" viewBox="0 0 400 100" preserveAspectRatio="none" aria-hidden="true" focusable="false"><mask id="hm-reveal-circle" maskUnits="userSpaceOnUse" x="-20" y="-20" width="440" height="140"><path class="hm-r hm-c3" pathLength="1" d="M360 26C351 21 342 18 330 15"/><path class="hm-r hm-c1" pathLength="1" d="M360 26C332 14 252 8 170 7C100 6 34 5 14 12C4 18 2 34 3 52C4 70 8 88 34 93C100 100 262 99 340 95C381 93 397 80 397 57C397 34 388 16 350 9C320 4 280 1 236 2"/><path class="hm-r hm-c2" pathLength="1" d="M16 62C14 80 34 91 80 95C170 101 300 100 362 91"/></mask><g mask="url(#hm-reveal-circle)"><path class="hm-c3" d="M360 26C351 21 342 18 330 15"/><path class="hm-c1" d="M360 26C332 14 252 8 170 7C100 6 34 5 14 12C4 18 2 34 3 52C4 70 8 88 34 93C100 100 262 99 340 95C381 93 397 80 397 57C397 34 388 16 350 9C320 4 280 1 236 2"/><path class="hm-c2" d="M16 62C14 80 34 91 80 95C170 101 300 100 362 91"/></g></svg></span><!-- hero-arrow lives inside the circle (kit contract): it starts at the left end of the loop and runs down the clipping margin to hero-note. Aimed in the MARKS block. Hidden below 980px. --></p>
+          <p class="clip-sub">Quality service you can count on. Call today for a free estimate.</p>
+        </div>
+        <div class="stack">
+          <div class="sheet behind b2"><span class="flabel">Day 10 close the loop</span></div>
+          <div class="sheet behind b1"><span class="flabel">Day 3 follow-up</span></div>
+          <article class="sheet email" aria-label="Example draft, email 1 of 3, to Dana">
+            <div class="email-head"><span class="tag">Example</span><span class="flabel">Email 1 of 3</span></div>
+            <dl class="hdrs">
+              <div><dt>To</dt><dd>Dana, owner of a regional HVAC company</dd></div>
+              <div><dt>Subject</dt><dd>Your homepage headline</dd></div>
+            </dl>
+            <div class="email-body">
+              <p>Hi Dana,</p>
+              <p>I spent a few minutes on your homepage this morning. <mark class="hl"><span class="hm hm-highlight" data-mark-id="hero-highlight">Your headline says “Excellence in comfort solutions,” and I couldn't tell from it what you install or who you serve.</span></mark></p>
+              <span class="hm hm-note" data-mark-id="hero-note">Their exact words, quoted.</span>
+              <p>A neighbor with a broken furnace probably can't either, and they have two other tabs open.</p>
+              <p>I put together a one-page look at what a first-time visitor sees. Want me to send it over?</p>
+              <p>Alex</p>
+            </div>
+          </article>
+        </div>
+      </div>
+      <figcaption>Example only. Dana and her company are made up to show the format.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- 2. Objection strip -->
+<section class="objections" aria-labelledby="obj-h">
+  <div class="wrap obj-grid">
+    <h2 id="obj-h">You stay in charge of every word.</h2>
+    <ul class="obj-list">
+      <li><strong>It sounds like you.</strong> <span>The drafts are built from two or three emails you've written. You can edit every word before anything goes out.</span></li>
+      <li><strong>Three emails, drafted up front.</strong> <span>The follow-up and the close-the-loop are already written. Change anything you want.</span></li>
+      <li><strong>Quoted, so you can check it.</strong> <span>Every finding quotes the exact words it rests on. Check it against their live page before you send. It takes seconds.</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 3. Referrals vs a pipeline -->
+<section class="problem" aria-labelledby="problem-h">
+  <div class="wrap">
+    <div class="problem-text">
+      <h2 id="problem-h">Referrals built your agency. A pipeline lets you pick what's next.</h2>
+      <div class="body">
+        <p>You're good at the work. You shouldn't have to wait for someone to mention your name before you get to prove it.</p>
+        <p>A pipeline means you decide who you'd love to work with, and you show up with something useful when you reach out.</p>
+      </div>
+    </div>
+    <table class="ledger">
+      <caption class="vh">Waiting on referrals compared with running a pipeline</caption>
+      <thead><tr><th scope="col">Waiting on referrals</th><th scope="col">Running a pipeline</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="then"><span class="side" aria-hidden="true">Waiting on referrals</span>New work shows up when someone remembers your name.</td>
+          <td class="now"><span class="side" aria-hidden="true">Running a pipeline</span>You pick the companies you want and work that list every week.</td>
+        </tr>
+        <tr>
+          <td class="then"><span class="side" aria-hidden="true">Waiting on referrals</span>Your cold emails <span class="vh">(crossed out:)</span><span class="hm hm-strike" data-mark-id="ledger-strike">sound like every other agency's</span>.</td>
+          <td class="now"><span class="side" aria-hidden="true">Running a pipeline</span>Every first email opens with a real finding about their business, in their own words.</td>
+        </tr>
+        <tr>
+          <td class="then"><span class="side" aria-hidden="true">Waiting on referrals</span>You're guessing where things stand.</td>
+          <td class="now"><span class="side" aria-hidden="true">Running a pipeline</span>You can see what's drafted, sent, replied, and booked.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 4. Proof: one prospect, start to finish -->
+<section class="proof" aria-labelledby="proof-h">
+  <div class="wrap">
+    <div class="proof-intro">
+      <p class="eyebrow">One prospect, start to finish</p>
+      <h2 id="proof-h">See every prospect you're working, from drafted to call booked.</h2>
+      <p>You add the companies you want. The tracker keeps count as each one moves, so you know who needs a nudge and who's ready for a call.</p>
+    </div>
+
+    <figure class="window">
+      <figcaption class="win-bar">
+        <span class="tag">Example data</span>
+        <span class="brandmini" aria-hidden="true">Client Pipeline</span>
+        <span class="flabel">Workspace: Your agency</span>
+        <span class="vh">Dana, her company and the other prospects are made up to show the format.</span>
+      </figcaption>
+      <div class="win-prospect">
+        <p class="p-name">Regional HVAC company</p>
+        <p class="p-who">Dana, owner</p>
+      </div>
+      <ol class="steps-proof">
+        <li class="ps ps1">
+          <span class="ps-num">01</span>
+          <h3>What you pasted</h3>
+          <div class="pasted">
+            <span class="flabel">Homepage text</span>
+            <p>Excellence in comfort solutions.</p>
+            <p>Quality service you can count on. Call today for a free estimate.</p>
+          </div>
+          <p class="cap">It works from what you paste in.</p>
+        </li>
+        <li class="ps ps2">
+          <span class="ps-num">02</span>
+          <h3>The finding</h3>
+          <p class="finding-text">The headline says <q>Excellence in comfort solutions.</q> A visitor can't tell what they install or who they serve.</p>
+          <span class="wnote">Quoted, so you can check it.</span>
+        </li>
+        <li class="ps ps3">
+          <span class="ps-num">03</span>
+          <h3>The emails</h3>
+          <div class="followups">
+            <details>
+              <summary>Day 0 email 1</summary>
+                <div class="app-email">
+                  <dl class="hdrs">
+                    <div><dt>To</dt><dd>Dana, owner of a regional HVAC company</dd></div>
+                    <div><dt>Subject</dt><dd>Your homepage headline</dd></div>
+                  </dl>
+                  <div class="email-body">
+                    <p>Hi Dana,</p>
+                    <p>I spent a few minutes on your homepage this morning. Your headline says “Excellence in comfort solutions,” and I couldn't tell from it what you install or who you serve.</p>
+                    <span class="wnote">One finding. Just one.</span>
+                    <p>A neighbor with a broken furnace probably can't either, and they have two other tabs open.</p>
+                    <span class="wnote">Their customer, not your service.</span>
+                    <p>I put together a one-page look at what a first-time visitor sees. Want me to send it over?</p>
+                    <span class="wnote">Small ask. Easy yes.</span>
+                    <p>Alex</p>
+                  </div>
+                </div>
+            </details>
+            <details>
+              <summary>Day 3 follow-up</summary>
+              <p>Hi Dana, quick nudge on the homepage note. Happy to send that one-page look if it's useful.</p>
+            </details>
+            <details>
+              <summary>Day 10 close the loop</summary>
+              <p>Hi Dana, I'll close the loop here. If the homepage moves up your list, the offer stands.</p>
+            </details>
+          </div>
+          <p class="cap">You copy each one and send it from your own inbox.</p>
+        </li>
+        <li class="ps ps4">
+          <span class="ps-num">04</span>
+          <h3>The reply</h3>
+          <div class="inbox-row">
+            <span class="from">Dana</span>
+            <span class="subj">Re: Your homepage headline</span>
+            <span class="snip">Sure, send it over.</span>
+          </div>
+          <p class="built"><span class="what">One-page audit: built</span><span class="tag">Copy</span><span class="tag">Download</span></p>
+        </li>
+        <li class="ps ps5">
+          <span class="ps-num">05</span>
+          <h3>Your pipeline</h3>
+          <div class="counts">
+            <div><b>4</b><span>Drafted</span></div>
+            <div><b>3</b><span>Sent</span></div>
+            <div><b>2</b><span>Replied</span></div>
+            <div><b>1</b><span>Call booked</span></div>
+          </div>
+          <ul class="rows">
+            <li><span class="co">Regional HVAC company<span class="who">Dana, owner</span></span><span class="hm hm-stamp" data-mark-id="window-stamp">Replied</span></li>
+            <li><span class="co">Family dental group<span class="who">Priya, practice manager</span></span><span class="status">Call booked</span></li>
+            <li><span class="co">Commercial roofing contractor<span class="who">Marcus, president</span></span><span class="status">Sent</span></li>
+            <li><span class="co">Boutique law firm<span class="who">Elena, managing partner</span></span><span class="status">Drafted</span></li>
+          </ul>
+          <span class="wnote">Your list. You picked them.</span>
+        </li>
+      </ol>
+    </figure>
+
+    <div class="proof-end">
+      <p>You've got the skill. Let's build you a pipeline you control.</p>
+      <a class="btn btn-lg js-apply" href="#early-access">Request early access</a>
     </div>
   </div>
 </section>
 
-<section id="how" class="band">
-  <div class="inner">
-    <h2>From first question to booked call</h2>
-    <ol class="steps">
-      <li><span class="n" aria-hidden="true">1</span><h3>Set up</h3><p class="muted">Answer nine questions about who you serve and what you sell. About ten minutes.</p></li>
-      <li><span class="n" aria-hidden="true">2</span><h3>Choose your asset</h3><p class="muted">The app recommends the one useful thing to make for each prospect, and what to look for.</p></li>
-      <li><span class="n" aria-hidden="true">3</span><h3>Work the list</h3><p class="muted">Add a prospect and paste in their homepage, ads, or welcome email. Get a finding and three emails in your voice.</p></li>
-      <li><span class="n" aria-hidden="true">4</span><h3>Follow through</h3><p class="muted">Send the full one-page asset when they reply, and track every prospect through to a booked call.</p></li>
-    </ol>
+<!-- 5. How it works + the five value assets -->
+<section class="how" aria-labelledby="how-h">
+  <div class="how-band">
+    <div class="wrap">
+      <p class="eyebrow">How it works</p>
+      <h2 id="how-h">Set it up once. Then every prospect gets a finding and three emails.</h2>
+      <ol class="timeline">
+        <li class="t1">
+          <span class="t-num">01</span>
+          <h3>Tell it what you do</h3>
+          <p>Answer nine questions: what you sell and what it costs, who you love working with and who you don't, the first thing you notice wrong when you look at a prospect, what you'd give away on a first call, your proof, and two or three emails you've written so the drafts sound like you.</p>
+        </li>
+        <li class="t2">
+          <span class="t-num">02</span>
+          <h3>Get your value asset</h3>
+          <p>The app recommends the one asset that shows off what you sell, and tells you what to look for in each prospect.</p>
+        </li>
+        <li class="t3">
+          <span class="t-num">03</span>
+          <h3>Add a prospect</h3>
+          <p>Paste in their homepage text, ads, or welcome email. You get one finding, with the exact words it rests on, and three emails that lead with it: the first email, a follow-up three days later, and a close-the-loop a week after that. Change anything you want.</p>
+          <ol class="dated" aria-label="The three emails for each prospect">
+            <li><b>Day 0</b><span>Email 1</span></li>
+            <li><b>Day 3</b><span>Follow-up</span></li>
+            <li><b>Day 10</b><span>Close the loop</span></li>
+          </ol>
+        </li>
+      </ol>
+    </div>
   </div>
-</section>
 
-<section id="assets">
-  <div class="inner">
-    <h2>Lead with the work you're known for</h2>
-    <p class="sub">A value asset is one useful thing you make for a prospect before you ask for anything. The app matches it to what you sell.</p>
-    <ul class="index">
-      <li><span class="sell">You sell messaging or brand</span><span class="lead">Messaging clarity audit</span><span class="what">What a first-time visitor understands in five seconds, and the biggest gap.</span></li>
-      <li><span class="sell">You sell SEO</span><span class="lead">Search gap snapshot</span><span class="what">Three search topics they should own and don't show up for, with the evidence.</span></li>
-      <li><span class="sell">You sell paid ads</span><span class="lead">Ad teardown</span><span class="what">Their current ads next to two competitors, and the biggest miss.</span></li>
-      <li><span class="sell">You sell web design</span><span class="lead">Homepage before-and-after brief</span><span class="what">What the top of their homepage does now, and a sketch of a stronger version.</span></li>
-      <li><span class="sell">You sell email</span><span class="lead">Welcome email rewrite</span><span class="what">What their welcome email misses, and the opening lines of a stronger one.</span></li>
-    </ul>
-  </div>
-</section>
-
-<section id="tool" class="band">
-  <div class="inner">
-    <h2>A practical tool, built for how agencies sell</h2>
-    <ul class="tiles">
-      <li><h3>Workspaces</h3><p>Keep each offer or niche in its own workspace, with its own targeting and voice.</p></li>
-      <li><h3>Your voice</h3><p>Drafts are built from emails you've written. Edit every word before it goes out.</p></li>
-      <li><h3>Evidence on every finding</h3><p>Each finding quotes the prospect's own words, so you can check it in seconds.</p></li>
-      <li><h3>One-page assets</h3><p>Build the full audit, teardown, or rewrite when a prospect replies. Copy it or download it.</p></li>
-      <li><h3>Pipeline tracker</h3><p>See what's sent, who replied, and which calls are booked at a glance.</p></li>
-      <li><h3>You stay in control</h3><p>Nothing sends on its own. Every email goes out from your inbox, under your name.</p></li>
-    </ul>
-  </div>
-</section>
-
-<section id="pricing">
-  <div class="inner">
-    <h2>Pick how much help you want</h2>
-    <div class="plans">
-      <div class="plan">
-        <h3>The app</h3>
-        <p class="price">$300 <small>a month</small></p>
-        <p class="muted">For agencies that want to run it themselves.</p>
-        <ul>
-          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>Setup questions and a value asset recommendation</span></li>
-          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>One finding and three emails for every prospect</span></li>
-          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>Full one-page assets to send when they reply</span></li>
-          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>A tracker for sent, replies, and calls booked</span></li>
-        </ul>
-        <a class="btn line js-apply" href="#early-access">Request early access</a>
+  <div class="assets">
+    <div class="wrap assets-grid">
+      <div class="assets-gutter"><span class="hm hm-note" data-mark-id="assets-note">Pick the one you'd sell.</span></div>
+      <div class="assets-main">
+        <h3>Lead with the thing you're already great at.</h3>
+        <p>A value asset is one useful thing you make for a prospect before you ask for anything. Setup matches it to what you sell, so your first email shows the kind of work you'd do for them.</p>
+        <table class="index">
+          <caption class="vh">The five value assets, matched to what your agency sells</caption>
+          <thead><tr><th scope="col">If you sell</th><th scope="col">Asset, and what you start from</th><th scope="col">What it looks at</th></tr></thead>
+          <tbody>
+            <tr><td class="sell">Messaging or brand</td><td class="asset"><b>Messaging clarity audit</b><span>From their homepage text</span></td><td class="looks">Whether a first-time visitor can tell what they do and who it's for</td></tr>
+            <tr><td class="sell">SEO</td><td class="asset"><b>Search gap snapshot</b><span>From data you paste from your own SEO tool</span></td><td class="looks">Where they're missing in search, with the evidence</td></tr>
+            <tr><td class="sell">Paid ads</td><td class="asset"><b>Ad teardown</b><span>From their current ads</span></td><td class="looks">The biggest miss in what their ads say</td></tr>
+            <tr><td class="sell">Web design</td><td class="asset"><b>Homepage before-and-after brief</b><span>From their homepage text</span></td><td class="looks">What the top of the page does now, and a stronger version</td></tr>
+            <tr><td class="sell">Email or lifecycle</td><td class="asset"><b>Welcome email rewrite</b><span>From their welcome email</span></td><td class="looks">What it misses, and stronger opening lines</td></tr>
+          </tbody>
+        </table>
+        <p class="after">Not sure which one is yours? Setup recommends it for you.</p>
       </div>
-      <div class="plan main">
-        <h3>App + coaching</h3>
-        <p class="price">$1,500 <small>a month</small></p>
-        <p class="muted">For agencies that want a guide in their corner.</p>
-        <ul>
-          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>Everything in the app</span></li>
-          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>A 1:1 onboarding call to set your targeting and voice</span></li>
-          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>A weekly review of your prospects and drafts</span></li>
-          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>Help responding to the replies you get</span></li>
+    </div>
+  </div>
+</section>
+
+<!-- 6. Plans -->
+<section class="plans" aria-labelledby="plans-h">
+  <div class="wrap">
+    <div class="plans-head">
+      <h2 id="plans-h">Pick how much help you want.</h2>
+      <p>Every plan starts with the same app. The difference is how much of a coach you want in your corner.</p>
+    </div>
+    <div class="rates">
+      <div class="rate rate-app">
+        <h3>The app</h3>
+        <p class="price"><span class="amt">$300</span><span class="per">a month</span></p>
+        <p class="for">Agencies that want to run it themselves.</p>
+        <ul class="incl">
+          <li>Nine setup questions and a value asset recommendation</li>
+          <li>One finding and three emails for every prospect you add</li>
+          <li>The full one-page asset when a prospect replies</li>
+          <li>A tracker for drafted, sent, replied, and call booked</li>
         </ul>
+        <a class="btn btn-outline js-apply" href="#early-access">Request early access</a>
+      </div>
+      <div class="rate rate-coach">
+        <span class="hm hm-bracket" data-side="right" data-mark-id="plans-bracket" aria-hidden="true"></span>
+        <h3>App + coaching</h3>
+        <span class="hm hm-note" data-mark-id="plans-note">Second set of eyes, every week.</span>
+        <p class="price"><span class="amt">$1,500</span><span class="per">a month</span></p>
+        <p class="for">Agencies that want a guide in their corner.</p>
+        <p class="plus">Everything in the app, plus:</p>
+        <ul class="incl">
+          <li>A 1:1 onboarding call to set your targeting and your voice</li>
+          <li>Guided setup, with coach prompts under each question and a kickoff recap</li>
+          <li>A weekly review of your prospects and drafts</li>
+          <li>Help responding to the replies you get</li>
+        </ul>
+        <p class="coach"><span class="who">Tyler Pigott</span><span class="role">Entrepreneur, sales and marketing leader, and coach</span>“I built Client Pipeline because <span class="ph">[why Tyler built it, 8 to 12 words]</span>.”</p>
         <a class="btn js-apply" href="#early-access">Request early access</a>
       </div>
-      <div class="plan">
-        <h3>Mastermind</h3>
-        <p class="price" style="font-size:32px">By invitation</p>
-        <p class="muted">For owners who want to grow alongside peers.</p>
-        <ul>
-          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>A small group of agency owners</span></li>
-          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>Monthly working sessions</span></li>
-          <li><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg><span>Shared playbooks and what's working now</span></li>
-        </ul>
-        <a class="btn line js-apply" href="#early-access">Ask about the mastermind</a>
+      <div class="rate-mm">
+        <div class="mm-head">
+          <h3>Mastermind</h3>
+          <p class="by">By invitation</p>
+        </div>
+        <div class="mm-body">
+          <p class="mm-for">Owners who want to grow alongside peers.</p>
+          <ul class="mm-list">
+            <li>A small group of agency owners</li>
+            <li>Monthly working sessions</li>
+            <li>Shared playbooks</li>
+          </ul>
+        </div>
+        <p class="ph">[Confirm: does the mastermind include the app or coaching?]</p>
+        <a class="btn btn-quiet js-apply" href="#early-access">Ask about the mastermind</a>
       </div>
     </div>
+    <p class="billing">[Billing terms: month to month or a minimum term, and whether early access pricing is locked in.]</p>
   </div>
 </section>
 
-<section id="answers" class="band">
-  <div class="inner">
-    <h2>Straight answers before you ask</h2>
-    <dl class="answers">
-      <div><dt>Does it send emails for me?</dt><dd>No. You copy each email and send it from your own inbox, so you stay in control of your name and your domain.</dd></div>
-      <div><dt>Where do the prospects come from?</dt><dd>In early access, you add the companies you want to reach. Bring a short list of businesses you'd love to work with.</dd></div>
-      <div><dt>Will it make things up?</dt><dd>It's built to work only from the material you give it. If there isn't enough for a real finding, it tells you what's missing instead of guessing. You still check every finding against their live site before you send.</dd></div>
-      <div><dt>Does it guarantee new clients?</dt><dd>No. It helps you start better conversations with the right people. Running the call and winning the work is still yours.</dd></div>
-      <div><dt>What do I need to get started?</dt><dd>Two or three emails you've written, a clear idea of who you serve, and about ten minutes for setup.</dd></div>
-      <div><dt>Is this just another AI email writer?</dt><dd>The emails are the small part. The work is in choosing the right asset for what you sell, and finding something true and useful to say to each prospect.</dd></div>
+<!-- 7. Straight answers -->
+<section class="answers" aria-labelledby="ans-h">
+  <div class="wrap ans-grid">
+    <h2 id="ans-h">Straight answers before you ask.</h2>
+    <dl class="faq">
+      <div><dt>Does it send the emails for me?</dt><dd>No. You copy each email and send it from your own inbox, so your name and your domain stay in your hands.</dd></div>
+      <div><dt>Does it find prospects for me?</dt><dd>No. You bring the list. Add the companies you'd love to work with, paste in their material, and the app takes it from there.</dd></div>
+      <div><dt>Does it go read their website?</dt><dd>No. It works from what you paste in: homepage text, ads, or a welcome email. That's also why every finding points back to words you can see.</dd></div>
+      <div><dt>Does it guarantee new clients?</dt><dd>No. It helps you start better conversations with the right people. Running the call and winning the work is still yours, and you're good at that part.</dd></div>
+      <div><dt>What do I need to get started?</dt><dd>Answers to nine questions, two or three emails you've written, and a short list of companies you'd love to work with.</dd></div>
     </dl>
   </div>
 </section>
 
-<section id="early-access" class="close">
-  <div class="inner">
-    <h2>You've got the expertise. Go start the conversations.</h2>
-    <p style="font-size:19px;max-width:34em">Request early access and we'll get you set up with your value asset and your first prospects.</p>
-    <a class="btn hot js-apply" href="#early-access">Request early access</a>
-    <p class="setup" id="setup-note">[Before you share this page: link these buttons to your application form or calendar.]</p>
+<!-- 8. Close -->
+<section class="close" id="early-access" aria-labelledby="close-h">
+  <div class="wrap">
+    <div class="letter">
+      <h2 id="close-h">You're good at the work. Let's go show people.</h2>
+      <p class="body">Request early access and <span class="ph">[what happens next, matching the FAQ answer: for example, who reaches out and how soon to set up your value asset and your first prospects]</span>.</p>
+      <p class="signoff"><span class="hm hm-sign" data-mark-id="close-sign">Tyler</span><span class="typed">Tyler Pigott, founder of Client Pipeline</span></p>
+      <a class="btn btn-lg js-apply" href="#early-access">Request early access</a>
+      <p id="setup-note">[Before you share this page: link these buttons to your application form or calendar.]</p>
+      <p class="fine">Plans from $300 a month. You send every email yourself.</p>
+    </div>
   </div>
 </section>
 
-<footer>
-  <div class="inner">
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-in">
     <span>[Your company name]</span>
     <span>[Privacy policy]</span>
     <span>[Terms]</span>
