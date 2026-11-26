@@ -77,7 +77,7 @@ const WEEK_TARGET = 15;
 let sb = null;
 const state = {
   phase: 'loading', user: null, profile: null, workspaces: [], wsId: null, prospects: [],
-  open: null, view: 'setup', notice: '', busy: false, confirm: null, sentTo: '', adminRows: null, confirming: false,
+  open: null, view: 'setup', toasts: [], menu: null, sheet: null, filter: 'all', q: '', emailTab: 0, loadingWs: false, focusDrawer: false, busy: false, confirm: null, sentTo: '', adminRows: null, confirming: false,
   setup: null, autoRec: null, addMode: null, csv: null,
 };
 const queues = {};
@@ -108,7 +108,6 @@ const esc = (s) => str(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/
 const assetById = (id) => ASSETS.find((a) => a.id === id) || null;
 const ws = () => state.workspaces.find((w) => w.id === state.wsId) || null;
 const hasAccess = (p) => !!p && p.status === 'approved' && (p.is_admin || p.comped || ['active', 'trialing'].includes(p.subscription_status || ''));
-function setNotice(msg) { state.notice = msg || ''; renderNotice(); }
 function field(id, label, control, hint) {
   return h('div', { class: 'col' }, h('label', { for: id, text: label }), control, hint ? h('p', { class: 'muted', text: hint }) : null);
 }
@@ -127,7 +126,7 @@ const KICKERS = ['On it.', 'Working on it.', 'Give me a moment.', 'Rolling up my
 let busyTick = null, busyReveal = null, busyFocus = null;
 function busy(on, label, work) {
   state.busy = on;
-  const box = $('busy'), page = document.querySelector('.wrap');
+  const box = $('busy'), page = $('app');
   clearInterval(busyTick); clearTimeout(busyReveal);
   if (!on) {
     box.classList.remove('on'); box.hidden = true;
@@ -189,7 +188,7 @@ async function loadProspects() {
 function rememberWs(id) { try { localStorage.setItem('cp:last-ws', id || ''); } catch { /* private mode */ } }
 function saveFailed(error) {
   console.error(error);
-  setNotice('That change could not be saved. Check your connection, then make the change again.');
+  setNotice('That change could not be saved. Check your connection, then make the change again.', 'error');
 }
 function saveWs(w, fields) {
   Object.assign(w, fields);
@@ -246,10 +245,10 @@ async function deleteWs(w) {
   render();
 }
 async function switchWs(id) {
-  state.wsId = id; state.open = null; rememberWs(id);
-  $('main').replaceChildren(h('div', { class: 'sheet' }, h('p', { text: 'Opening workspace...' })));
+  state.wsId = id; state.open = null; state.sheet = null; state.filter = 'all'; state.q = ''; rememberWs(id);
+  state.loadingWs = true; render();
   await loadProspects();
-  render();
+  state.loadingWs = false; render();
 }
 
 // ---------- server functions ----------
@@ -268,7 +267,7 @@ async function ask(label, task, data, opts = {}) {
     return out?.result ?? null;
   } catch (e) {
     if (e.code === 'not_approved' || e.code === 'no_plan' || e.code === 'not_signed_in') { await loadAccount(); }
-    setNotice(opts.fix ? opts.fix(e) : e.message);
+    setNotice(opts.fix ? opts.fix(e) : e.message, 'error');
     return null;
   } finally { busy(false); }
 }
@@ -326,7 +325,7 @@ async function findBestFits() {
   const fresh = (r.added || []).filter((x) => x.workspace_id === w.id && !state.prospects.some((p) => p.id === x.id));
   state.prospects = [...fresh, ...state.prospects];
   setNotice(fresh.length ? 'Found ' + fresh.length + ' new best-fit ' + (fresh.length === 1 ? 'company' : 'companies') + '. Add the ones you like to your prospects.'
-    : 'No new strong matches this time. Try again later, or make your ideal client in Setup a little broader.');
+    : 'No new strong matches this time. Try again later, or make your ideal client in Setup a little broader.', fresh.length ? 'success' : 'info');
   render();
 }
 async function buildAsset(p) {
@@ -365,7 +364,7 @@ async function openPortal() {
 
 // ---------- copy and download ----------
 function copyText(text, btn) {
-  const done = (msg) => { const old = btn.textContent; btn.textContent = msg; setTimeout(() => { btn.textContent = old; }, 1600); };
+  const done = (msg) => { const old = [...btn.childNodes]; btn.textContent = msg; setTimeout(() => { btn.replaceChildren(...old); }, 1600); };
   if (!navigator.clipboard) { done('Select the text and copy it'); return; }
   navigator.clipboard.writeText(text).then(() => done('Copied'), () => done('Select the text and copy it'));
 }
@@ -445,149 +444,283 @@ async function signOut() {
 }
 
 // ---------- rendering ----------
+// Small line icons, drawn to match the clerk: round caps, 1.8 stroke.
+const ICONS = {
+  setup: '<path d="M9 4h6M8 3h8a1 1 0 0 1 1 1v1H7V4a1 1 0 0 1 1-1z"/><path d="M7 5H5.5A1.5 1.5 0 0 0 4 6.5v13A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 18.5 5H17"/><path d="M8 11l1.5 1.5L12 10M8 16.5l1.5 1.5 2.5-2.5M14 11.5h3M14 17h3"/>',
+  prospects: '<path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4l2 2h8a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M8 13h8M8 16h5"/>',
+  tracker: '<path d="M4 20h16"/><path d="M6.5 16v-4M11 16V8M15.5 16v-6M20 16V5" transform="translate(-.5 0)"/>',
+  billing: '<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/>',
+  admin: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  chevron: '<path d="M8 10l4 4 4-4"/>',
+  external: '<path d="M14 4h6v6M20 4l-9 9M18 14v4.5A1.5 1.5 0 0 1 16.5 20h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>',
+  mail: '<rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M3.5 7l8.5 6 8.5-6"/>',
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+  upload: '<path d="M12 16V4M7 9l5-5 5 5M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16"/>',
+  logout: '<path d="M15 4h3.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H15M10 16l4-4-4-4M14 12H4"/>',
+  download: '<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>',
+};
+function svgFrom(markup) { const t = document.createElement('template'); t.innerHTML = markup.trim(); return t.content.firstChild; }
+const icon = (name) => svgFrom('<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + ICONS[name] + '</svg>');
+// The brand mark: a prospect file with its tab, and one green line written on it.
+const markSvg = () => svgFrom('<svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M4 9.5A1.5 1.5 0 0 1 5.5 8H12l2.5 3h12A1.5 1.5 0 0 1 28 12.5v13a1.5 1.5 0 0 1-1.5 1.5h-21A1.5 1.5 0 0 1 4 25.5z" fill="#E6D7A6" stroke="#10261D" stroke-width="2" stroke-linejoin="round"/><path d="M9 17.5h14" stroke="#0E6A48" stroke-width="2.6" stroke-linecap="round"/><path d="M9 22h9" stroke="#10261D" stroke-width="2" stroke-linecap="round" opacity=".35"/></svg>');
+// A still copy of the clerk from the working card, for empty states.
+const clerk = (still) => {
+  const el = document.querySelector('#busy .bot').cloneNode(true);
+  if (still) el.classList.add('still');
+  return el;
+};
+const brand = (href) => h('a', { class: 'brand', href: href || '../', 'aria-label': 'Client Pipeline home' }, markSvg(), h('span', { text: 'Client Pipeline' }));
+const pageHead = (title, sub, ...actions) => h('div', { class: 'page-head' },
+  h('div', { class: 'col' }, h('h1', { text: title }), sub ? (typeof sub === 'string' ? h('p', { text: sub }) : sub) : null),
+  actions.filter(Boolean).length ? h('div', { class: 'row' }, actions) : null);
+const initial = (email) => (str(email).trim()[0] || '?').toUpperCase();
+
+let toastSeq = 0;
+function dismissToast(id) { state.toasts = state.toasts.filter((t) => t.id !== id); renderNotice(); }
+const ERRORISH = /(could not|couldn't|did not|didn't|does not look|not right|failed|wrong|limit|expired|isn't|not found|too big|first\b|Enter |Add their|Add your|Choose|Describe|Paste|We couldn't|Only)/i;
+function setNotice(msg, kind) {
+  if (!msg) { state.toasts = []; renderNotice(); return; }
+  const t = { id: ++toastSeq, msg, kind: kind || (ERRORISH.test(msg) ? 'error' : 'info') };
+  state.toasts = [...state.toasts.filter((x) => x.msg !== msg), t].slice(-3);
+  renderNotice();
+  setTimeout(() => dismissToast(t.id), t.kind === 'error' ? 14000 : 7000);
+}
 function renderNotice() {
   const box = $('notice'); box.replaceChildren();
-  if (!state.notice) return;
-  box.appendChild(h('div', { class: 'notice', role: 'alert' }, h('span', { text: state.notice }),
-    h('button', { type: 'button', class: 'quiet', onclick: () => setNotice('') }, 'Dismiss')));
+  state.toasts.forEach((t) => box.appendChild(h('div', { class: 'toast ' + t.kind, role: t.kind === 'error' ? 'alert' : 'status' },
+    h('span', { text: t.msg }),
+    h('button', { type: 'button', onclick: () => dismissToast(t.id) }, 'Dismiss'))));
 }
-function renderWho() {
-  const box = $('who'); box.replaceChildren();
-  if (!state.user) return;
-  box.appendChild(h('span', { text: state.user.email || '' }));
-  box.appendChild(h('button', { type: 'button', class: 'quiet', onclick: signOut }, 'Sign out'));
+function go(view) {
+  state.view = view; state.menu = null; state.open = null; state.sheet = null;
+  if (location.hash !== '#' + view) history.replaceState(null, '', '#' + view);
+  render(); window.scrollTo(0, 0);
 }
-function go(view) { state.view = view; if (location.hash !== '#' + view) history.replaceState(null, '', '#' + view); render(); }
 function render() {
-  renderNotice(); renderWho();
-  const main = $('main'), y = window.scrollY;
+  renderNotice();
+  const root = $('app'), y = window.scrollY;
   let view;
-  if (state.phase === 'unconfigured') view = viewUnconfigured();
-  else if (state.phase === 'loading') view = h('div', { class: 'sheet' }, h('p', { text: 'Loading...' }));
-  else if (state.phase === 'error') view = viewError();
-  else if (state.phase === 'signedout') view = viewSignIn();
-  else if (state.phase === 'pending') view = viewPending();
-  else if (state.phase === 'rejected') view = viewRejected();
-  else if (state.phase === 'plans') view = viewPlans(true);
-  else view = viewApp();
-  main.replaceChildren(view);
+  if (state.phase === 'app') view = viewShell();
+  else if (state.phase === 'unconfigured') view = authFrame(viewUnconfigured());
+  else if (state.phase === 'loading') view = authFrame(h('div', { class: 'auth-card' }, h('div', { class: 'skeleton', style: 'height:28px;width:60%' }), h('div', { class: 'skeleton', style: 'height:14px' }), h('div', { class: 'skeleton', style: 'height:14px;width:80%' })));
+  else if (state.phase === 'error') view = authFrame(viewError());
+  else if (state.phase === 'signedout') view = authFrame(viewSignIn(), true);
+  else if (state.phase === 'pending') view = authFrame(viewPending());
+  else if (state.phase === 'rejected') view = authFrame(viewRejected());
+  else view = authFrame(viewPlans(true));
+  root.replaceChildren(view);
+  document.body.classList.toggle('locked', state.phase === 'app' && !!(state.sheet || (state.open && state.view === 'prospects')));
   window.scrollTo(0, y);
+  if (state.focusDrawer) { state.focusDrawer = false; const c = document.querySelector('.drawer [data-close], .dialog [data-close]'); if (c) c.focus(); }
+}
+function authFrame(content) {
+  return h('div', { class: 'auth' },
+    h('header', { class: 'auth-top' }, brand(),
+      state.user ? h('div', { class: 'row' }, h('span', { class: 'muted', text: state.user.email || '' }), h('button', { type: 'button', class: 'quiet small', onclick: signOut }, 'Sign out')) : h('span', { class: 'pill', text: 'Early access' })),
+    h('main', { class: 'auth-body', id: 'main' }, content));
 }
 
 function viewUnconfigured() {
-  return h('div', { class: 'sheet narrow' }, h('h1', { text: 'Almost there' }),
+  return h('div', { class: 'auth-card' }, h('h1', { text: 'Almost there' }),
     h('p', { text: 'This app is not connected to Supabase yet. Add your Project URL and publishable key to app/config.js, as the setup guide describes.' }));
 }
 function viewError() {
-  return h('div', { class: 'sheet narrow' }, h('h1', { text: 'Something went wrong' }),
-    h('p', { text: 'Your account could not be loaded. Check your connection and try again.' }),
+  return h('div', { class: 'auth-card' }, h('h1', { text: 'Your account did not load' }),
+    h('p', { text: 'Check your connection and try again.' }),
     h('div', { class: 'row' }, h('button', { type: 'button', class: 'primary', onclick: () => loadAccount() }, 'Try again'),
       h('button', { type: 'button', class: 'quiet', onclick: signOut }, 'Sign out')));
+}
+function signInPitch() {
+  return h('div', { class: 'auth-pitch' },
+    h('h2', { text: 'Outreach that opens with something useful.' }),
+    h('p', { text: "For each prospect, the app finds the one clear gap on their site and drafts three short emails that lead with it. You review, you send, you book the call." }),
+    h('div', { class: 'pitch-card', 'aria-hidden': 'true' },
+      h('p', { class: 'who', text: 'Example prospect file' }),
+      h('div', { class: 'lines' }, h('div', { class: 'ln' }), h('div', { class: 'ln' })),
+      h('p', { class: 'found' }, 'Their headline, ', h('span', { class: 'quote', text: '"The all-in-one platform for modern operations"' }), ", never says who it's for."),
+      h('p', { class: 'hand note', text: 'That becomes the first line.' })));
 }
 function viewSignIn() {
   const email = h('input', { type: 'email', id: 'email', autocomplete: 'email', placeholder: 'you@youragency.com', value: state.sentTo });
   const send = async (e) => {
     e.preventDefault();
     const addr = email.value.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) { setNotice('Enter a valid email address.'); email.focus(); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) { setNotice('Enter a valid email address.', 'error'); email.focus(); return; }
     busy(true, 'Sending your sign-in email...');
     const { error } = await sb.auth.signInWithOtp({ email: addr, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: true } });
     busy(false);
-    if (error) { setNotice(/rate|seconds/i.test(error.message) ? 'Please wait a minute before asking for another email.' : 'The email could not be sent. Check the address and try again.'); return; }
+    if (error) { setNotice(/rate|seconds/i.test(error.message) ? 'Please wait a minute before asking for another email.' : 'The email could not be sent. Check the address and try again.', 'error'); return; }
     state.sentTo = addr; setNotice(''); render();
   };
+  let card;
   if (!state.sentTo) {
-    return h('form', { class: 'sheet narrow', onsubmit: send, novalidate: true },
-      h('p', { class: 'label', text: 'Early access' }),
+    card = h('form', { class: 'auth-card', onsubmit: send, novalidate: true },
       h('h1', { text: 'Sign in or request access' }),
-      h('p', { text: "Enter your work email. We'll send you a sign-in link and a 6-digit code. No password to remember." }),
+      h('p', { class: 'muted', style: 'font-size:15px', text: "Enter your work email. We'll send you a sign-in link and a 6-digit code. No password to remember." }),
       field('email', 'Work email', email),
       h('button', { type: 'submit', class: 'primary' }, 'Email me a sign-in link'),
-      h('p', { class: 'muted', text: 'New here? Signing in creates your request. Tyler reviews every request before access opens.' }));
+      h('p', { class: 'faint', text: 'New here? Signing in creates your request. Tyler reviews every request before access opens.' }));
+  } else {
+    const code = h('input', { type: 'text', id: 'code', class: 'code', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '10', placeholder: '000000' });
+    const verify = async (e) => {
+      e.preventDefault();
+      const token = code.value.replace(/\s/g, '');
+      if (!/^\d{6,10}$/.test(token)) { setNotice('Enter the code from the email.', 'error'); code.focus(); return; }
+      busy(true, 'Signing you in...');
+      const { error } = await sb.auth.verifyOtp({ email: state.sentTo, token, type: 'email' });
+      busy(false);
+      if (error) { setNotice('That code did not work. It may have expired: ask for a new email.', 'error'); return; }
+      setNotice('');
+    };
+    card = h('form', { class: 'auth-card', onsubmit: verify, novalidate: true },
+      h('h1', { text: 'Check your email' }),
+      h('p', { class: 'muted', style: 'font-size:15px' }, 'We sent a sign-in link and a code to ', h('b', { text: state.sentTo }), '. Click the link, or type the code here.'),
+      field('code', 'Code from the email', code),
+      h('button', { type: 'submit', class: 'primary' }, 'Sign in'),
+      h('div', { class: 'row between' },
+        h('button', { type: 'button', class: 'quiet small', onclick: () => { state.sentTo = ''; render(); } }, 'Use a different email')),
+      h('p', { class: 'faint', text: 'Nothing yet? Check your spam folder. Links work best opened in this same browser; the code works anywhere.' }));
   }
-  const code = h('input', { type: 'text', id: 'code', class: 'code', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '10', placeholder: '000000' });
-  const verify = async (e) => {
-    e.preventDefault();
-    const token = code.value.replace(/\s/g, '');
-    if (!/^\d{6,10}$/.test(token)) { setNotice('Enter the code from the email.'); code.focus(); return; }
-    busy(true, 'Signing you in...');
-    const { error } = await sb.auth.verifyOtp({ email: state.sentTo, token, type: 'email' });
-    busy(false);
-    if (error) { setNotice('That code did not work. It may have expired: ask for a new email.'); return; }
-    setNotice('');
-  };
-  return h('form', { class: 'sheet narrow', onsubmit: verify, novalidate: true },
-    h('h1', { text: 'Check your email' }),
-    h('p', {}, 'We sent a sign-in link and a code to ', h('b', { text: state.sentTo }), '. Click the link, or type the code here.'),
-    field('code', 'Code from the email', code),
-    h('button', { type: 'submit', class: 'primary' }, 'Sign in'),
-    h('div', { class: 'row' }, h('button', { type: 'button', class: 'quiet', onclick: () => { state.sentTo = ''; render(); } }, 'Use a different email')),
-    h('p', { class: 'muted', text: "Nothing yet? Check your spam folder. Links work best opened in this same browser; the code works anywhere." }));
+  return h('div', { class: 'auth-split' }, signInPitch(), card);
 }
 function viewPending() {
-  return h('div', { class: 'sheet narrow' },
+  return h('div', { class: 'auth-card' },
     h('p', { class: 'hand', text: 'Request received.' }),
     h('h1', { text: "You're on the list" }),
-    h('p', {}, "Thanks for requesting early access. Tyler reviews every request personally, and we'll email you as soon as yours is approved. Then you can choose a plan right here."),
-    h('p', { class: 'muted', text: 'Signed in as ' + (state.user?.email || '') }),
+    h('p', { text: "Tyler reviews every request personally, and we'll email you as soon as yours is approved. Then you can choose a plan right here." }),
     h('div', { class: 'row' }, h('button', { type: 'button', onclick: () => loadAccount() }, 'Check again')));
 }
 function viewRejected() {
-  return h('div', { class: 'sheet narrow' }, h('h1', { text: "We're not a fit right now" }),
+  return h('div', { class: 'auth-card' }, h('h1', { text: "We're not a fit right now" }),
     h('p', { text: "Thanks for your interest in Client Pipeline. Early access is limited, and we can't open an account for you at the moment. If you think this is a mistake, reply to any email from us." }));
 }
 function planCard(pl, current) {
   return h('div', { class: 'plan' + (pl.main ? ' main' : '') },
+    pl.main ? h('span', { class: 'pill plan-tag', text: 'Includes 1:1 coaching' }) : null,
     h('h2', { text: pl.name }), h('p', { class: 'price' }, pl.price, ' ', h('small', { text: 'a month' })),
     h('p', { class: 'muted', text: pl.blurb }),
-    h('ul', { class: 'plain' }, pl.items.map((t) => h('li', { text: t }))),
+    h('ul', { class: 'ticks' }, pl.items.map((t) => h('li', { text: t }))),
     current ? h('p', { class: 'label', text: 'Your plan' })
       : h('button', { type: 'button', class: pl.main ? 'primary' : '', onclick: () => startCheckout(pl.id) }, pl.cta));
 }
 function viewPlans(standalone) {
   if (state.confirming) {
-    return h('div', { class: 'sheet narrow' }, h('h1', { text: 'Confirming your payment' }),
+    return h('div', { class: 'auth-card' }, clerk(false), h('h1', { text: 'Confirming your payment' }),
       h('p', { text: 'Stripe has your payment. Your plan switches on here in a few seconds.' }));
   }
-  return h('div', { class: 'col', style: 'gap:16px' },
-    h('div', { class: 'sheet' },
+  return h('div', { class: 'stack', style: 'width:100%;max-width:900px' },
+    h('div', { class: 'col', style: 'gap:6px' },
       standalone ? h('p', { class: 'hand', text: "You're approved." }) : null,
       h('h1', { text: 'Choose your plan' }),
-      h('p', { text: 'Payment is handled by Stripe. You can change or cancel your plan any time from Billing.' })),
+      h('p', { class: 'muted', style: 'font-size:15px', text: 'Payment is handled by Stripe. You can change or cancel your plan any time from Billing.' })),
     h('div', { class: 'plans' }, PLANS.map((pl) => planCard(pl, false))),
-    h('p', { class: 'muted', text: 'Interested in the mastermind? It is by invitation. Reply to your welcome email and Tyler will tell you more.' }));
+    h('p', { class: 'faint', text: 'Interested in the mastermind? It is by invitation. Reply to your welcome email and Tyler will tell you more.' }));
 }
 
-function viewApp() {
-  const w = ws(), out = h('div', { class: 'col', style: 'gap:16px' });
-  const admin = !!state.profile?.is_admin;
-  if (state.view === 'admin' && !admin) state.view = 'setup';
-  if (state.workspaces.length) {
-    out.appendChild(h('div', { class: 'row' },
-      h('label', { for: 'ws-select', class: 'label', text: 'Workspace' }),
-      h('select', { id: 'ws-select', onchange: (e) => switchWs(e.target.value) },
-        state.workspaces.map((x) => h('option', { value: x.id, selected: x.id === state.wsId, text: x.name }))),
-      h('button', { type: 'button', onclick: () => { state.wsId = null; state.prospects = []; go('setup'); } }, 'New workspace')));
-  }
-  const tabs = [['setup', 'Setup'], ['prospects', 'Prospects'], ['tracker', 'Tracker'], ['billing', 'Billing']];
-  if (admin) tabs.push(['admin', 'Admin']);
-  out.appendChild(h('nav', { class: 'tabs', 'aria-label': 'Sections' }, tabs.map(([v, label]) =>
-    h('a', { href: '#' + v, 'aria-current': state.view === v ? 'page' : null, onclick: (e) => { e.preventDefault(); go(v); } }, label))));
-  if (state.view === 'billing') out.appendChild(viewBilling());
-  else if (state.view === 'admin') out.appendChild(viewAdmin());
-  else if (!w) out.appendChild(viewWelcome());
-  else if (state.view === 'prospects') out.appendChild(viewProspects(w));
-  else if (state.view === 'tracker') out.appendChild(viewTracker());
-  else out.appendChild(viewSetup(w));
-  return out;
+// ---------- the app frame: sidebar on desktop, top bar and tab bar on phones ----------
+function navItems() {
+  const items = [['setup', 'Setup', 'setup'], ['prospects', 'Prospects', 'prospects'], ['tracker', 'Tracker', 'tracker'], ['billing', 'Billing', 'billing']];
+  if (state.profile?.is_admin) items.push(['admin', 'Admin', 'admin']);
+  return items;
 }
+const waitingCount = () => state.prospects.filter((p) => p.status === 'Suggested').length;
+function navLink([v, label, ic]) {
+  const n = v === 'prospects' ? waitingCount() : 0;
+  return h('a', { href: '#' + v, 'aria-current': state.view === v ? 'page' : null, onclick: (e) => { e.preventDefault(); go(v); } },
+    icon(ic), h('span', { text: label }), n ? h('span', { class: 'count', 'aria-label': n + ' best fits waiting', text: String(n) }) : null);
+}
+function wsMenu() {
+  const w = ws();
+  const btn = h('button', { type: 'button', class: 'ws-btn', 'aria-haspopup': 'menu', 'aria-expanded': String(state.menu === 'ws'),
+    onclick: (e) => { e.stopPropagation(); state.menu = state.menu === 'ws' ? null : 'ws'; render(); } },
+    h('span', { class: 'ws-ico', text: initial(w ? w.name : '+') }),
+    h('span', { class: 'ws-name', text: w ? w.name : 'No workspace yet' }), icon('chevron'));
+  const box = h('div', { class: 'anchor grow' }, btn);
+  if (state.menu === 'ws') {
+    box.appendChild(h('div', { class: 'menu', role: 'menu', style: 'top:calc(100% + 6px);left:0;right:0' },
+      h('p', { class: 'menu-head', text: 'Workspaces' }),
+      state.workspaces.map((x) => h('button', { type: 'button', role: 'menuitemradio', 'aria-current': String(x.id === state.wsId),
+        onclick: () => { state.menu = null; if (x.id !== state.wsId) switchWs(x.id); else render(); } }, x.name)),
+      h('hr'),
+      h('button', { type: 'button', role: 'menuitem', onclick: () => { state.menu = null; state.wsId = null; state.prospects = []; go('setup'); } }, icon('plus'), 'New workspace')));
+  }
+  return box;
+}
+function userMenu(where) {
+  const email = state.user?.email || '', p = state.profile || {};
+  const plan = PLANS.find((x) => x.id === p.plan);
+  const role = p.is_admin ? 'Admin' : plan && ['active', 'trialing', 'past_due'].includes(p.subscription_status || '') ? plan.name : p.comped ? 'Complimentary access' : '';
+  const open = state.menu === 'user-' + where;
+  const toggle = (e) => { e.stopPropagation(); state.menu = open ? null : 'user-' + where; render(); };
+  const btn = where === 'side'
+    ? h('button', { type: 'button', class: 'me', 'aria-haspopup': 'menu', 'aria-expanded': String(open), onclick: toggle },
+      h('span', { class: 'avatar', text: initial(email) }), h('span', { class: 'col' }, h('b', { text: email }), role ? h('span', { class: 'faint', text: role }) : null))
+    : h('button', { type: 'button', class: 'avatar-btn', 'aria-label': 'Account', 'aria-haspopup': 'menu', 'aria-expanded': String(open), onclick: toggle }, h('span', { class: 'avatar', text: initial(email) }));
+  const box = h('div', { class: 'anchor' }, btn);
+  if (open) {
+    box.appendChild(h('div', { class: 'menu', role: 'menu', style: where === 'side' ? 'bottom:calc(100% + 6px);left:0;right:0' : 'top:calc(100% + 8px);right:0' },
+      h('p', { class: 'menu-head', text: email }),
+      h('button', { type: 'button', role: 'menuitem', onclick: () => go('billing') }, icon('billing'), 'Billing'),
+      h('hr'),
+      h('button', { type: 'button', role: 'menuitem', onclick: () => { state.menu = null; signOut(); } }, icon('logout'), 'Sign out')));
+  }
+  return box;
+}
+function viewShell() {
+  const items = navItems();
+  if (!items.some(([v]) => v === state.view)) state.view = 'setup';
+  const side = h('aside', { class: 'side', 'aria-label': 'Main' },
+    brand(),
+    wsMenu(),
+    h('nav', { class: 'nav', 'aria-label': 'Sections' },
+      items.filter(([v]) => !['billing', 'admin'].includes(v)).map(navLink),
+      h('p', { class: 'nav-label', text: 'Account' }),
+      items.filter(([v]) => ['billing', 'admin'].includes(v)).map(navLink)),
+    h('div', { class: 'side-foot' }, userMenu('side')));
+  const top = h('header', { class: 'topbar' }, brand(), wsMenu(), userMenu('top'));
+  const tabs = h('nav', { class: 'tabbar nav', 'aria-label': 'Sections' }, items.map(navLink));
+  const main = h('main', { class: 'content', id: 'main' }, viewPage());
+  return h('div', { class: 'shell' }, side, h('div', { class: 'frame' }, top, main), tabs, overlays());
+}
+function viewPage() {
+  const w = ws();
+  if (state.loadingWs) return h('div', { class: 'stack' }, h('div', { class: 'skeleton', style: 'height:32px;width:40%' }), h('div', { class: 'skeleton', style: 'height:180px' }));
+  if (state.view === 'billing') return viewBilling();
+  if (state.view === 'admin') return viewAdmin();
+  if (!w) return viewWelcome();
+  if (state.view === 'prospects') return viewProspects(w);
+  if (state.view === 'tracker') return viewTracker();
+  return viewSetup(w);
+}
+function overlays() {
+  const box = h('div', {});
+  const w = ws();
+  if (state.view === 'prospects' && w) {
+    const p = state.open && state.prospects.find((x) => x.id === state.open);
+    if (p) box.append(h('div', { class: 'scrim', onclick: closeOverlay }), prospectDrawer(p, assetById(w.asset?.id) || ASSETS[0]));
+    if (state.sheet === 'add') box.append(h('div', { class: 'scrim', onclick: closeOverlay }), addDialog(w));
+  }
+  return box;
+}
+function closeOverlay() { state.open = null; state.sheet = null; state.confirm = null; render(); }
+document.addEventListener('click', (e) => { if (state.menu && !e.target.closest('.anchor')) { state.menu = null; render(); } });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || state.busy) return;
+  if (state.menu) { state.menu = null; render(); return; }
+  if (state.sheet || state.open) closeOverlay();
+});
 
 function viewWelcome() {
   const name = h('input', { type: 'text', id: 'new-ws-name', placeholder: 'Agency or client name' });
   const start = () => { const n = name.value.trim(); if (!n) { name.focus(); return; } createWs(n, false); };
-  return h('div', { class: 'sheet' },
-    h('h1', { text: state.workspaces.length ? 'Add a workspace' : 'Set up your first workspace' }),
-    h('p', { text: 'A workspace holds one agency: its ideal client, its voice, the value asset it leads with, and its prospects.' }),
+  name.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); start(); } });
+  return h('div', { class: 'sheet', style: 'max-width:640px' },
+    h('div', { class: 'empty', style: 'padding:12px 0 0' }, clerk(true),
+      h('h1', { text: state.workspaces.length ? 'Add a workspace' : 'Set up your first workspace' }),
+      h('p', { class: 'muted', style: 'font-size:15px', text: 'A workspace holds one agency: its ideal client, its voice, the value asset it leads with, and its prospects.' })),
     field('new-ws-name', 'Name this workspace', name),
     h('div', { class: 'row' },
       h('button', { type: 'button', class: 'primary', onclick: start }, 'Create workspace'),
@@ -605,7 +738,7 @@ function firstSetupStep(w) {
 }
 function goStep(step, extra) {
   state.setup = { ...state.setup, step, nudge: null, suggest: null, focus: true, ...(extra || {}) };
-  state.notice = '';
+  state.toasts = [];
   render();
   window.scrollTo(0, 0);
 }
@@ -640,9 +773,12 @@ function viewSetup(w) {
   const st = state.setup;
   if (st.step === null) return viewSetupSummary(w);
   const total = STEPS.length, at = st.step === 'start' ? 0 : st.step === 'plan' ? total : st.step;
-  const frame = h('div', { class: 'col', style: 'gap:16px' },
+  const frame = h('div', { class: 'wizard-wrap' },
+    h('div', { class: 'row between' },
+      h('span', { class: 'label', text: st.step === 'start' ? 'Getting started' : st.step === 'plan' ? 'All seven steps done' : Math.round((at / total) * 100) + '% done' }),
+      w.intake._done ? h('button', { type: 'button', class: 'quiet small', onclick: () => goStep(null, { returnTo: null }) }, 'Exit setup') : null),
     h('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': String(at), 'aria-label': 'Setup progress' },
-      h('span', { style: 'width:' + Math.round((at / total) * 100) + '%' })));
+      h('span', { style: 'width:' + Math.max(3, Math.round((at / total) * 100)) + '%' })));
   const body = st.step === 'start' ? viewSetupStart(w) : st.step === 'plan' ? viewSetupPlan(w) : viewSetupQuestion(w, st.step);
   frame.appendChild(body);
   if (st.step !== 'plan') frame.appendChild(modeSwitch(w));
@@ -830,17 +966,15 @@ function viewSetupPlan(w) {
 }
 function viewSetupSummary(w) {
   const i = w.intake, guided = w.mode === 'guided';
-  const out = h('div', { class: 'col', style: 'gap:16px' });
-  out.appendChild(h('div', { class: 'sheet' },
-    h('h1', { text: 'Setup' }),
-    h('p', { class: 'muted', text: 'Your answers drive every finding, email and weekly suggestion. Change anything, any time.' }),
-    modeSwitch(w),
-    h('div', { class: 'row' }, h('button', { type: 'button', onclick: () => goStep(0, { returnTo: null, nudged: {} }) }, 'Walk through setup again'))));
+  const out = h('div', { class: 'stack' });
+  out.appendChild(pageHead('Setup', 'Your answers drive every finding, email and weekly suggestion. Change anything, any time.',
+    h('button', { type: 'button', onclick: () => goStep(0, { returnTo: null, nudged: {} }) }, 'Walk through setup again')));
+  out.appendChild(modeSwitch(w));
 
   const rows = h('div', { class: 'answers' });
   const line = (label, value, onEdit) => rows.appendChild(h('div', { class: 'answer' },
     h('div', { class: 'col', style: 'gap:2px' }, h('b', { text: label }), value ? h('span', { text: value }) : h('span', { class: 'muted', text: 'Not answered yet' })),
-    h('button', { type: 'button', class: 'quiet', onclick: onEdit, 'aria-label': 'Edit ' + label }, 'Edit')));
+    h('button', { type: 'button', class: 'small', onclick: onEdit, 'aria-label': 'Edit ' + label }, 'Edit')));
   line('Website', str(i.website), () => goStep('start', { returnTo: 'summary' }));
   FIELDS.forEach((f) => line(f.label, f.k === 'voice' && str(i.voice).trim() ? 'Added (' + str(i.voice).trim().split(/\s+/).length + ' words)' : str(i[f.k]).trim(),
     () => goStep(stepOf(f.k), { returnTo: 'summary' })));
@@ -870,7 +1004,7 @@ function viewSetupSummary(w) {
     out.appendChild(onb);
   }
 
-  const del = h('div', { class: 'sheet' }, h('h2', { text: 'Workspace' }));
+  const del = h('div', { class: 'sheet' }, h('h2', { text: 'Workspace settings' }));
   const nm = h('input', { type: 'text', id: 'ws-name', value: w.name, maxlength: '120' });
   nm.addEventListener('change', () => { if (nm.value.trim()) { saveWs(w, { name: nm.value.trim() }); render(); } });
   del.appendChild(field('ws-name', 'Workspace name', nm));
@@ -949,33 +1083,109 @@ async function importRows(w, rows) {
     }
     state.prospects = [...added.reverse(), ...state.prospects];
     state.csv = null;
-    setNotice('Imported ' + added.length + ' prospects. Open one and press "Find the gap and draft emails" to start.');
+    setNotice('Imported ' + added.length + ' prospects. Open one and press "Find the gap and draft emails" to start.', 'success');
   } catch (e) { saveFailed(e); } finally { busy(false); render(); }
 }
 
 // ---------- prospects tab ----------
+const FILTERS = [['all', 'All'], ['New', 'To draft'], ['Drafted', 'Drafted'], ['Approved', 'Approved'], ['Sent', 'Sent'], ['Replied', 'Replied'], ['Call booked', 'Calls booked'], ['Not a fit', 'Not a fit']];
+const fmtDate = (d) => { try { return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return ''; } };
+function openAdd(mode) { state.sheet = 'add'; state.addMode = mode || 'one'; state.csv = null; state.focusDrawer = true; render(); }
+function openProspect(id) { state.open = id; state.confirm = null; state.emailTab = 0; state.focusDrawer = true; render(); }
+
 function viewProspects(w) {
-  const a = assetById(w.asset?.id), out = h('div', { class: 'col', style: 'gap:16px' });
+  const a = assetById(w.asset?.id), out = h('div', { class: 'stack' });
   const hasIdeal = str(w.intake?.ideal).trim().length >= 15;
-  if (!state.addMode) state.addMode = state.prospects.length ? 'one' : (hasIdeal ? 'find' : 'one');
-  out.appendChild(h('div', { class: 'sheet' }, h('h1', { text: 'Prospects' }),
-    a ? h('p', {}, 'Leading with ', h('b', { text: a.name }), '. ' + addedThisWeek() + ' added this week. Aim for ' + WEEK_TARGET + '.')
-      : h('div', { class: 'row' }, h('span', { text: 'Finish Setup first, so the findings fit what you sell.' }), h('button', { type: 'button', onclick: () => go('setup') }, 'Go to Setup'))));
-
-  const modes = [['find', 'Best fits'], ['one', 'Add one'], ['csv', 'Import list']];
-  const entry = h('div', { class: 'sheet' },
-    h('div', { class: 'seg wide', role: 'tablist', 'aria-label': 'Ways to add prospects' },
-      modes.map(([m, label]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(state.addMode === m), 'aria-pressed': String(state.addMode === m),
-        onclick: () => { state.addMode = m; render(); } }, label))));
-  if (state.addMode === 'one') addOneForm(w, a, entry);
-  else if (state.addMode === 'csv') importForm(w, entry);
-  else bestFits(w, hasIdeal, entry);
-  out.appendChild(entry);
-
+  const used = suggestedThisWeek(), left = Math.max(0, SUGGEST_WEEKLY - used);
   const list = state.prospects.filter(inPipeline);
-  if (list.length) out.appendChild(h('h2', { class: 'label', text: 'Your prospects (' + list.length + ')' }));
-  list.forEach((p) => out.appendChild(prospectCard(p, a || ASSETS[0])));
+  const sug = state.prospects.filter((p) => p.status === 'Suggested').sort((x, y) => (y.fit_score ?? 0) - (x.fit_score ?? 0));
+  const findBtn = h('button', { type: 'button', class: 'primary', disabled: !hasIdeal || !left, onclick: findBestFits,
+    title: !hasIdeal ? 'Describe your ideal client in Setup first' : !left ? "You've used this week's " + SUGGEST_WEEKLY : null }, used ? 'Find more best fits' : 'Find my best fits');
+  out.appendChild(pageHead('Prospects',
+    a ? h('p', {}, 'Leading with ', h('b', { text: a.name }), '. ' + addedThisWeek() + ' added this week, aim for ' + WEEK_TARGET + '.') : 'Finish setup first, so the findings fit what you sell.',
+    h('button', { type: 'button', onclick: () => openAdd('one') }, icon('plus'), 'Add prospects'), findBtn));
+  if (!a) out.appendChild(h('div', { class: 'nudge row between' }, h('span', { text: 'Your value asset is not chosen yet. The finding in each email comes from it.' }),
+    h('button', { type: 'button', class: 'small', onclick: () => { state.setup = null; go('setup'); } }, 'Go to Setup')));
+
+  if (sug.length) out.appendChild(reviewPanel(sug, used));
+  else if (used) out.appendChild(h('p', { class: 'faint', text: used + ' of ' + SUGGEST_WEEKLY + ' best fits used this week.' + (left ? '' : " More open up as this week's age out.") }));
+
+  if (!list.length && !sug.length) {
+    out.appendChild(h('div', { class: 'sheet' }, h('div', { class: 'empty' }, clerk(true),
+      h('h2', { text: 'Your pipeline starts here' }),
+      h('p', { class: 'muted', style: 'font-size:15px', text: hasIdeal ? "Let the app find this week's best-fit companies, add one by its website, or bring a list you already have."
+        : 'Add a prospect by its website or import a list. Finish your ideal client in Setup and the app can find best fits for you too.' }),
+      h('div', { class: 'row', style: 'justify-content:center' },
+        hasIdeal ? h('button', { type: 'button', class: 'primary', disabled: !left, onclick: findBestFits }, 'Find my best fits') : null,
+        h('button', { type: 'button', onclick: () => openAdd('one') }, 'Add one'),
+        h('button', { type: 'button', onclick: () => openAdd('csv') }, icon('upload'), 'Import a list')))));
+    return out;
+  }
+  if (!list.length) return out;
+
+  const counts = Object.fromEntries(FILTERS.map(([k]) => [k, k === 'all' ? list.length : list.filter((p) => p.status === k).length]));
+  if (state.filter !== 'all' && !counts[state.filter]) state.filter = 'all';
+  const q = state.q.trim().toLowerCase();
+  const shown = list.filter((p) => (state.filter === 'all' || p.status === state.filter) &&
+    (!q || [p.company, p.contact, p.email, p.url].some((x) => str(x).toLowerCase().includes(q))));
+  const search = h('input', { type: 'search', id: 'p-search', placeholder: 'Search prospects', value: state.q, 'aria-label': 'Search prospects' });
+  search.addEventListener('input', () => {
+    state.q = search.value; const pos = search.selectionStart; render();
+    const again = $('p-search'); if (again) { again.focus(); again.setSelectionRange(pos, pos); }
+  });
+  out.appendChild(h('div', { class: 'sheet flush' },
+    h('div', { class: 'toolbar' },
+      h('div', { class: 'filters', role: 'group', 'aria-label': 'Filter by status' },
+        FILTERS.filter(([k]) => k === 'all' || counts[k]).map(([k, label]) => h('button', { type: 'button', 'aria-pressed': String(state.filter === k),
+          onclick: () => { state.filter = k; render(); } }, label, h('span', { text: String(counts[k]) })))),
+      search),
+    shown.length ? h('div', { class: 'plist' }, shown.map(prospectRow))
+      : h('div', { class: 'empty' }, h('p', { class: 'muted', text: 'No prospects match. Try another filter or search.' }))));
   return out;
+}
+function prospectRow(p) {
+  return h('button', { type: 'button', class: 'prow phead', 'aria-current': String(state.open === p.id), onclick: () => openProspect(p.id) },
+    h('span', { class: 'pname', text: p.company }),
+    h('span', { class: 'psub', text: [[p.contact, p.role].filter(Boolean).join(', '), domainOf(p.url)].filter(Boolean).join('  |  ') || 'No contact yet' }),
+    h('span', { class: 'pmeta' }, p.fit_score != null ? h('span', { class: 'score', title: 'Fit with your ideal client', text: 'Fit ' + p.fit_score }) : null, chip(p.status)),
+    h('span', { class: 'pdate', text: fmtDate(p.created_at) }));
+}
+function reviewPanel(sug, used) {
+  const panel = h('section', { class: 'review', 'aria-label': 'Best fits to review' },
+    h('div', { class: 'row between' },
+      h('div', { class: 'col', style: 'gap:2px' },
+        h('h2', {}, sug.length + ' best ' + (sug.length === 1 ? 'fit' : 'fits') + ' waiting for you'),
+        h('p', { class: 'muted', text: 'Add the ones you like. ' + used + ' of ' + SUGGEST_WEEKLY + ' used this week.' })),
+      sug.length > 1 ? h('button', { type: 'button', class: 'small', onclick: async () => { for (const p of sug) await saveProspect(p, { status: 'New' }); setNotice('Added ' + sug.length + ' prospects.', 'success'); render(); } }, 'Add all ' + sug.length) : null));
+  sug.forEach((p) => panel.appendChild(h('div', { class: 'suggestion' },
+    h('div', { class: 'row between', style: 'align-items:flex-start;flex-wrap:nowrap' },
+      h('div', { class: 'col', style: 'gap:1px;min-width:0' }, h('span', { class: 'pname', text: p.company }),
+        h('span', { class: 'muted', text: domainOf(p.url) }),
+        p.contact ? h('span', { class: 'muted', text: [p.contact, p.role].filter(Boolean).join(', ') }) : null),
+      p.fit_score != null ? h('span', { class: 'score', title: 'How closely they match your ideal client', text: 'Fit ' + p.fit_score }) : null),
+    p.fit_reason ? h('p', { style: 'font-size:15px', text: p.fit_reason }) : null,
+    h('div', { class: 'row' },
+      h('button', { type: 'button', class: 'primary small', onclick: async () => { await saveProspect(p, { status: 'New' }); openProspect(p.id); } }, 'Add to my prospects'),
+      h('button', { type: 'button', class: 'quiet small', onclick: async () => { await saveProspect(p, { status: 'Not a fit' }); render(); } }, 'Not a fit'),
+      h('span', { style: 'flex:1' }),
+      /^https:\/\//.test(str(p.url)) ? h('a', { href: p.url, target: '_blank', rel: 'noopener noreferrer', class: 'faint', text: 'Their site' }) : null,
+      /^https:\/\//.test(str(p.source_url)) ? h('a', { href: p.source_url, target: '_blank', rel: 'noopener noreferrer', class: 'faint', text: 'Where we found them' }) : null))));
+  return panel;
+}
+
+// ---------- add prospects dialog ----------
+function addDialog(w) {
+  const a = assetById(w.asset?.id);
+  const mode = state.addMode === 'csv' ? 'csv' : 'one';
+  const body = h('div', { class: 'dialog-body' },
+    h('div', { class: 'seg', role: 'tablist', 'aria-label': 'Ways to add prospects', style: 'align-self:flex-start' },
+      [['one', 'Add one'], ['csv', 'Import list']].map(([m, label]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(mode === m), 'aria-pressed': String(mode === m),
+        onclick: () => { state.addMode = m; render(); } }, label))));
+  if (mode === 'one') addOneForm(w, a, body); else importForm(w, body);
+  return h('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'add-title' },
+    h('div', { class: 'dialog-head' }, h('h2', { id: 'add-title', text: 'Add prospects' }),
+      h('button', { type: 'button', class: 'quiet icon-only', 'data-close': '', 'aria-label': 'Close', onclick: closeOverlay }, icon('close'))),
+    body);
 }
 function addOneForm(w, a, box) {
   const d = { url: '', company: '', contact: '', email: '', role: '', material: '' };
@@ -986,10 +1196,10 @@ function addOneForm(w, a, box) {
   };
   const save = async (draft) => {
     const dom = domainOf(d.url);
-    if (!dom && !d.company.trim()) { $('np-url').focus(); setNotice('Add their website, or at least a company name.'); return; }
-    if (d.email.trim() && !isEmail(d.email)) { $('np-email').focus(); setNotice('That email address does not look right.'); return; }
+    if (!dom && !d.company.trim()) { $('np-url').focus(); setNotice('Add their website, or at least a company name.', 'error'); return; }
+    if (d.email.trim() && !isEmail(d.email)) { $('np-email').focus(); setNotice('That email address does not look right.', 'error'); return; }
     const dup = dom && state.prospects.find((p) => domainOf(p.url) === dom);
-    if (dup) { state.open = dup.id; setNotice(dup.company + ' is already in your list, so we opened it.'); render(); return; }
+    if (dup) { state.sheet = null; setNotice(dup.company + ' is already in your list, so we opened it.', 'info'); openProspect(dup.id); return; }
     busy(true, 'Saving...');
     const { data, error } = await sb.from('prospects').insert({
       workspace_id: w.id, company: (d.company.trim() || dom).slice(0, 200), contact: d.contact.trim(), role: d.role.trim(), email: d.email.trim(),
@@ -997,10 +1207,11 @@ function addOneForm(w, a, box) {
     }).select().single();
     busy(false);
     if (error) { saveFailed(error); return; }
-    state.prospects.unshift(data); state.open = data.id; render();
+    state.prospects.unshift(data); state.sheet = null; state.filter = 'all';
+    openProspect(data.id);
     if (draft) await researchProspect(data);
   };
-  box.appendChild(h('p', { class: 'muted', text: "Paste their website. The app reads it, finds the gap, and drafts three emails. You don't need to copy anything from their site." }));
+  box.appendChild(h('p', { class: 'muted', text: "Paste their website. The app reads it, finds the gap and drafts three emails. You don't need to copy anything from their site." }));
   box.appendChild(h('div', { class: 'grid2' },
     field('np-url', 'Their website', mk('url', 'url', 'theircompany.com')),
     field('np-company', 'Company (optional)', mk('company', 'text', 'We take it from their site')),
@@ -1019,9 +1230,9 @@ function importForm(w, box) {
   const input = h('input', { type: 'file', id: 'csv-file', accept: '.csv,text/csv,text/plain' });
   input.addEventListener('change', async () => {
     const file = input.files?.[0]; if (!file) return;
-    if (file.size > 3_000_000) { setNotice('That file is too big. Split it into files under 3 MB.'); return; }
+    if (file.size > 3_000_000) { setNotice('That file is too big. Split it into files under 3 MB.', 'error'); return; }
     const parsed = csvProspects(await file.text());
-    if (parsed.error) { setNotice(parsed.error); state.csv = null; } else state.csv = { name: file.name, ...parsed };
+    if (parsed.error) { setNotice(parsed.error, 'error'); state.csv = null; } else state.csv = { name: file.name, ...parsed };
     render();
   });
   box.appendChild(field('csv-file', 'Your CSV file', input));
@@ -1032,151 +1243,161 @@ function importForm(w, box) {
       h('p', {}, h('b', { text: c.rows.length + ' new prospects' }), ' in ' + c.name + '. ' + withSite + ' have a website and ' + withEmail + ' have an email.' +
         (c.dupes ? ' Skipping ' + c.dupes + ' you already have or that repeat.' : '') + (c.cut ? ' Only the first 300 will be imported.' : '')),
       withSite < c.rows.length ? h('p', { class: 'muted', text: 'Prospects without a website need material pasted in before the app can draft emails for them.' }) : null,
-      c.rows.length ? h('div', { class: 'tablebox' }, h('table', {},
+      c.rows.length ? h('div', { class: 'tablebox', style: 'background:var(--sheet);border-radius:var(--r-sm)' }, h('table', {},
         h('thead', {}, h('tr', {}, ['Company', 'Website', 'Contact', 'Email'].map((t) => h('th', { text: t })))),
         h('tbody', {}, c.rows.slice(0, 5).map((r) => h('tr', {}, h('td', { text: r.company }), h('td', { text: domainOf(r.url) }), h('td', { text: r.contact }), h('td', { text: r.email })))))) : null,
       h('div', { class: 'row' },
-        h('button', { type: 'button', class: 'primary', disabled: !c.rows.length, onclick: () => importRows(w, c.rows) }, 'Import ' + c.rows.length + ' prospects'),
+        h('button', { type: 'button', class: 'primary', disabled: !c.rows.length, onclick: () => { state.sheet = null; importRows(w, c.rows); } }, 'Import ' + c.rows.length + ' prospects'),
         h('button', { type: 'button', class: 'quiet', onclick: () => { state.csv = null; render(); } }, 'Clear'))));
   }
 }
-function bestFits(w, hasIdeal, box) {
-  const used = suggestedThisWeek(), left = Math.max(0, SUGGEST_WEEKLY - used);
-  box.appendChild(h('p', { class: 'muted', text: 'The app searches the web for companies that match your ideal client, scores each one, and tells you why it fits. Up to ' + SUGGEST_WEEKLY + ' a week, so you only see the best.' }));
-  if (!hasIdeal) {
-    box.appendChild(h('div', { class: 'row' }, h('span', { text: 'Describe your ideal client in Setup first, so the search knows who to look for.' }),
-      h('button', { type: 'button', onclick: () => { state.setup = null; go('setup'); } }, 'Go to Setup')));
-    return;
-  }
-  box.appendChild(h('div', { class: 'row' },
-    h('button', { type: 'button', class: 'primary', disabled: !left, onclick: findBestFits }, used ? 'Find more best fits' : 'Find my best fits'),
-    h('span', { class: 'muted', text: used + ' of ' + SUGGEST_WEEKLY + ' used this week.' + (left ? '' : ' More open up as this week\'s age out.') })));
-  const sug = state.prospects.filter((p) => p.status === 'Suggested').sort((x, y) => (y.fit_score ?? 0) - (x.fit_score ?? 0));
-  if (!sug.length) return;
-  box.appendChild(h('div', { class: 'row', style: 'justify-content:space-between' },
-    h('h2', { text: sug.length + ' waiting for you' }),
-    sug.length > 1 ? h('button', { type: 'button', onclick: async () => { for (const p of sug) await saveProspect(p, { status: 'New' }); render(); } }, 'Add all ' + sug.length) : null));
-  sug.forEach((p) => box.appendChild(h('div', { class: 'block suggestion' },
-    h('div', { class: 'row', style: 'justify-content:space-between;align-items:flex-start' },
-      h('div', { class: 'col', style: 'gap:2px' }, h('span', { class: 'pname', text: p.company }),
-        h('span', { class: 'muted', text: [domainOf(p.url), [p.contact, p.role].filter(Boolean).join(', ')].filter(Boolean).join(' \u00b7 ') })),
-      p.fit_score != null ? h('span', { class: 'score', title: 'How closely they match your ideal client', text: 'Fit ' + p.fit_score }) : null),
-    p.fit_reason ? h('p', { text: p.fit_reason }) : null,
-    h('div', { class: 'row' },
-      h('button', { type: 'button', class: 'primary', onclick: async () => { await saveProspect(p, { status: 'New' }); state.open = p.id; render(); } }, 'Add to my prospects'),
-      h('button', { type: 'button', class: 'quiet', onclick: async () => { await saveProspect(p, { status: 'Not a fit' }); render(); } }, 'Not a fit'),
-      /^https:\/\//.test(str(p.url)) ? h('a', { href: p.url, target: '_blank', rel: 'noopener noreferrer', text: 'Their site' }) : null,
-      /^https:\/\//.test(str(p.source_url)) ? h('a', { href: p.source_url, target: '_blank', rel: 'noopener noreferrer', text: 'Where we found them' }) : null))));
-}
 
-function prospectCard(p, a) {
-  const open = state.open === p.id, card = h('div', { class: 'sheet' });
-  card.appendChild(h('button', { type: 'button', class: 'phead', 'aria-expanded': String(open), onclick: () => { state.open = open ? null : p.id; state.confirm = null; render(); } },
-    h('span', { class: 'col', style: 'gap:0' }, h('span', { class: 'pname', text: p.company }),
-      h('span', { class: 'muted', text: [p.contact, p.role].filter(Boolean).join(', ') || domainOf(p.url) || 'No contact yet' })),
-    chip(p.status)));
-  if (!open) return card;
-
+// ---------- prospect panel ----------
+function prospectDrawer(p, a) {
   const contact = h('input', { type: 'text', id: 'pc-' + p.id, value: str(p.contact), placeholder: 'First name' });
-  contact.addEventListener('change', () => saveProspect(p, { contact: contact.value.trim().slice(0, 200) }));
+  contact.addEventListener('change', () => { saveProspect(p, { contact: contact.value.trim().slice(0, 200) }); });
   const email = h('input', { type: 'email', id: 'pe-' + p.id, value: str(p.email), placeholder: 'name@theircompany.com' });
   email.addEventListener('change', () => {
     const v = email.value.trim();
-    if (v && !isEmail(v)) { setNotice('That email address does not look right.'); return; }
+    if (v && !isEmail(v)) { setNotice('That email address does not look right.', 'error'); return; }
     saveProspect(p, { email: v.slice(0, 320) }); render();
   });
-  card.appendChild(h('div', { class: 'grid2' }, field('pc-' + p.id, 'Contact first name', contact), field('pe-' + p.id, 'Contact email', email)));
-  card.appendChild(h('div', { class: 'row' }, h('label', { for: 'st-' + p.id, text: 'Status' }),
-    h('select', { id: 'st-' + p.id, onchange: (e) => { saveProspect(p, { status: e.target.value }); render(); } },
-      STATUSES.map((s) => h('option', { value: s, selected: s === p.status, text: s }))),
-    /^https:\/\//.test(str(p.url)) ? h('a', { href: p.url, target: '_blank', rel: 'noopener noreferrer', text: 'Open their site' }) : null));
+  const role = h('input', { type: 'text', id: 'pr-' + p.id, value: str(p.role), placeholder: 'Owner, head of marketing...' });
+  role.addEventListener('change', () => { saveProspect(p, { role: role.value.trim().slice(0, 200) }); });
+  const status = h('select', { id: 'st-' + p.id, 'aria-label': 'Status', onchange: (e) => { saveProspect(p, { status: e.target.value }); render(); } },
+    STATUSES.map((s) => h('option', { value: s, selected: s === p.status, text: s })));
+  const dom = domainOf(p.url);
 
-  const mat = h('textarea', { id: 'mat-' + p.id, class: 'big', value: str(p.material), placeholder: domainOf(p.url) ? 'Leave empty and the app reads ' + domainOf(p.url) + ' for you.' : 'Paste it here', maxlength: '20000' });
+  const body = h('div', { class: 'drawer-body' });
+  body.appendChild(h('section', { class: 'drawer-section' }, h('h3', { text: 'Contact' }),
+    h('div', { class: 'grid2' }, field('pc-' + p.id, 'First name', contact), field('pe-' + p.id, 'Email', email)),
+    field('pr-' + p.id, 'Role', role)));
+
+  // The finding
+  const mat = h('textarea', { id: 'mat-' + p.id, class: 'big', value: str(p.material), placeholder: dom ? 'Leave empty and the app reads ' + dom + ' for you.' : 'Paste it here', maxlength: '20000' });
   mat.addEventListener('input', () => { p.material = mat.value; });
   mat.addEventListener('change', () => saveProspect(p, { material: mat.value }));
-  const matBox = h('details', { open: !domainOf(p.url) || !!p.missing }, h('summary', { text: str(p.material).trim() ? 'What the finding is based on' : 'Their material' }),
-    field('mat-' + p.id, 'Their material', mat, a.paste));
-  card.appendChild(matBox);
-  card.appendChild(h('div', { class: 'row' }, h('button', { type: 'button', class: 'primary', onclick: () => researchProspect(p) }, p.finding ? 'Redo the finding and emails' : 'Find the gap and draft emails')));
-  if (p.missing) card.appendChild(h('div', { class: 'notice' }, h('span', { text: 'More material needed: ' + p.missing })));
-
+  const finding = h('section', { class: 'drawer-section' }, h('h3', { text: 'The finding' }));
   if (p.finding) {
-    card.appendChild(h('div', { class: 'block soft' }, h('h3', { text: 'Finding' }), h('p', { text: p.finding.headline }),
+    finding.appendChild(h('div', { class: 'block soft' }, h('p', { style: 'font-weight:600', text: p.finding.headline }),
       p.finding.evidence ? h('p', {}, h('span', { class: 'quote', text: p.finding.evidence })) : null,
       p.finding.whyItMatters ? h('p', { class: 'muted', text: p.finding.whyItMatters }) : null,
       h('p', { class: 'hand', text: 'Check the quote against their live page before you send.' })));
-    if (!isEmail(p.email)) card.appendChild(h('p', { class: 'muted', text: 'Add their email above and "Open in Gmail" fills in the To line for you.' }));
-    (p.emails || []).forEach((e, n) => {
-      const sid = 'es-' + p.id + '-' + n, bid = 'eb-' + p.id + '-' + n;
-      const sI = h('input', { type: 'text', id: sid, value: e.subject }), bI = h('textarea', { id: bid, class: 'big', value: e.body });
-      const persist = () => saveProspect(p, { emails: p.emails.map((x, i) => (i === n ? { subject: sI.value, body: bI.value } : x)) });
-      sI.addEventListener('change', persist); bI.addEventListener('change', persist);
-      const openGmail = () => {
-        window.open(gmailLink(p.email, sI.value, bI.value), '_blank', 'noopener');
-        if (n === 0 && ['New', 'Drafted', 'Approved'].includes(p.status)) setNotice('Opened email 1 in Gmail. Once you send it, set ' + p.company + ' to Sent so the tracker counts it.');
-      };
-      card.appendChild(h('div', { class: 'block' },
-        h('h3', { text: n === 0 ? 'Day 0: email 1' : n === 1 ? 'Day 3: follow-up' : 'Day 10: close the loop' }),
-        field(sid, 'Subject', sI), field(bid, 'Body', bI),
-        h('div', { class: 'row' },
-          h('button', { type: 'button', onclick: openGmail, title: 'Opens a new Gmail message. If you close it without sending, Gmail keeps it as a draft.' }, 'Open in Gmail'),
-          h('button', { type: 'button', onclick: (ev) => copyText('Subject: ' + sI.value + '\n\n' + bI.value, ev.target) }, 'Copy email'))));
-    });
-    const ab = h('div', { class: 'block' }, h('h3', { text: 'Full ' + a.name }), h('p', { class: 'muted', text: 'Build this for prospects who reply, or for your top few each week.' }));
+  } else if (!p.missing) {
+    finding.appendChild(h('p', { class: 'muted', text: dom ? 'The app reads ' + dom + ', finds the one clear gap, and drafts three emails that lead with it.' : 'Paste their material below, and the app finds the gap and drafts three emails.' }));
+  }
+  if (p.missing) finding.appendChild(h('div', { class: 'nudge' }, h('b', { text: 'More material needed: ' }), p.missing));
+  finding.appendChild(h('div', { class: 'row' }, h('button', { type: 'button', class: p.finding ? '' : 'primary', onclick: () => researchProspect(p) }, p.finding ? 'Redo the finding and emails' : 'Find the gap and draft emails')));
+  finding.appendChild(h('details', { open: !dom || !!p.missing }, h('summary', { text: str(p.material).trim() ? 'What the finding is based on' : 'Their material' }),
+    field('mat-' + p.id, 'Their material', mat, a.paste)));
+  body.appendChild(finding);
+
+  // The emails, one at a time
+  if (p.emails?.length) {
+    const labels = [['Email 1', 'day 0'], ['Follow-up', 'day 3'], ['Close the loop', 'day 10']];
+    const n = Math.min(state.emailTab || 0, p.emails.length - 1), e = p.emails[n];
+    const sid = 'es-' + p.id + '-' + n, bid = 'eb-' + p.id + '-' + n;
+    const sI = h('input', { type: 'text', id: sid, value: e.subject }), bI = h('textarea', { id: bid, class: 'big', value: e.body, style: 'min-height:220px' });
+    const persist = () => saveProspect(p, { emails: p.emails.map((x, i) => (i === n ? { subject: sI.value, body: bI.value } : x)) });
+    sI.addEventListener('change', persist); bI.addEventListener('change', persist);
+    const openGmail = () => {
+      window.open(gmailLink(p.email, sI.value, bI.value), '_blank', 'noopener');
+      if (n === 0 && ['New', 'Drafted', 'Approved'].includes(p.status)) setNotice('Opened email 1 in Gmail. Once you send it, set ' + p.company + ' to Sent so the tracker counts it.', 'info');
+    };
+    body.appendChild(h('section', { class: 'drawer-section' }, h('h3', { text: 'Emails' }),
+      h('div', { class: 'email-tabs', role: 'tablist', 'aria-label': 'Emails' }, labels.slice(0, p.emails.length).map(([l, d], i) =>
+        h('button', { type: 'button', role: 'tab', 'aria-selected': String(i === n), onclick: () => { state.emailTab = i; render(); } }, l, h('small', { text: d })))),
+      field(sid, 'Subject', sI), field(bid, 'Body', bI),
+      !isEmail(p.email) ? h('p', { class: 'faint', text: 'Add their email under Contact and Open in Gmail fills in the To line.' }) : null,
+      h('div', { class: 'row' },
+        h('button', { type: 'button', class: 'primary', onclick: openGmail, title: 'Opens a new Gmail message. If you close it without sending, Gmail keeps it as a draft.' }, icon('mail'), 'Open in Gmail'),
+        h('button', { type: 'button', onclick: (ev) => copyText('Subject: ' + sI.value + '\n\n' + bI.value, ev.currentTarget) }, icon('copy'), 'Copy email'))));
+
+    const ab = h('section', { class: 'drawer-section' }, h('h3', { text: 'Full ' + a.name }),
+      h('p', { class: 'muted', text: 'Build this for prospects who reply, or for your top few each week.' }));
     if (p.asset) {
-      ab.appendChild(h('h2', { text: p.asset.title }));
-      ab.appendChild(h('p', { text: p.asset.intro }));
-      p.asset.sections.forEach((sec) => ab.appendChild(h('div', { class: 'col' }, h('b', { text: sec.heading }), h('p', { text: sec.body }))));
-      ab.appendChild(h('p', { text: p.asset.nextStep }));
+      ab.appendChild(h('div', { class: 'block' }, h('h2', { text: p.asset.title }), h('p', { text: p.asset.intro }),
+        p.asset.sections.map((sec) => h('div', { class: 'col' }, h('b', { text: sec.heading }), h('p', { text: sec.body }))),
+        h('p', { text: p.asset.nextStep })));
     }
     ab.appendChild(h('div', { class: 'row' },
       h('button', { type: 'button', class: p.asset ? '' : 'primary', onclick: () => buildAsset(p) }, p.asset ? 'Rebuild' : 'Build the full asset'),
-      p.asset ? h('button', { type: 'button', onclick: (ev) => copyText(assetAsText(p), ev.target) }, 'Copy text') : null,
-      p.asset ? h('button', { type: 'button', onclick: () => downloadAsset(p) }, 'Download one-pager') : null));
-    card.appendChild(ab);
+      p.asset ? h('button', { type: 'button', onclick: (ev) => copyText(assetAsText(p), ev.currentTarget) }, icon('copy'), 'Copy text') : null,
+      p.asset ? h('button', { type: 'button', onclick: () => downloadAsset(p) }, icon('download'), 'Download one-pager') : null));
+    body.appendChild(ab);
   }
 
-  if (state.confirm === p.id) card.appendChild(h('div', { class: 'row' }, h('span', { text: 'Delete ' + p.company + '?' }),
-    h('button', { type: 'button', class: 'danger', onclick: async () => {
-      const { error } = await sb.from('prospects').delete().eq('id', p.id);
-      if (error) { saveFailed(error); return; }
-      state.prospects = state.prospects.filter((x) => x.id !== p.id); state.confirm = null; state.open = null; render();
-    } }, 'Yes, delete'),
-    h('button', { type: 'button', onclick: () => { state.confirm = null; render(); } }, 'Keep')));
-  else card.appendChild(h('div', { class: 'row' }, h('button', { type: 'button', class: 'quiet danger', onclick: () => { state.confirm = p.id; render(); } }, 'Delete prospect')));
-  return card;
+  body.appendChild(state.confirm === p.id
+    ? h('div', { class: 'row' }, h('span', { text: 'Delete ' + p.company + '? This cannot be undone.' }),
+      h('button', { type: 'button', class: 'danger small', onclick: async () => {
+        const { error } = await sb.from('prospects').delete().eq('id', p.id);
+        if (error) { saveFailed(error); return; }
+        state.prospects = state.prospects.filter((x) => x.id !== p.id); state.confirm = null; state.open = null;
+        setNotice('Deleted ' + p.company + '.', 'info'); render();
+      } }, 'Yes, delete'),
+      h('button', { type: 'button', class: 'small', onclick: () => { state.confirm = null; render(); } }, 'Keep'))
+    : h('div', { class: 'row' }, h('button', { type: 'button', class: 'quiet danger small', onclick: () => { state.confirm = p.id; render(); } }, 'Delete prospect')));
+
+  return h('aside', { class: 'drawer', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'drawer-title' },
+    h('div', { class: 'drawer-head' },
+      h('div', { class: 'col' },
+        h('h2', { id: 'drawer-title', text: p.company }),
+        h('div', { class: 'row', style: 'gap:8px' }, chip(p.status),
+          dom && /^https?:\/\//.test(str(p.url)) ? h('a', { href: p.url, target: '_blank', rel: 'noopener noreferrer', class: 'faint row', style: 'gap:4px' }, dom, icon('external')) : null)),
+      status,
+      h('button', { type: 'button', class: 'quiet icon-only', 'data-close': '', 'aria-label': 'Close', onclick: closeOverlay }, icon('close'))),
+    body);
 }
 
+// ---------- tracker ----------
 function viewTracker() {
   const ps = state.prospects.filter(inPipeline), count = (list) => ps.filter((p) => list.includes(p.status)).length;
+  const drafted = count(['Drafted', 'Approved', 'Sent', 'Replied', 'Call booked']);
   const sent = count(['Sent', 'Replied', 'Call booked']), replies = count(['Replied', 'Call booked']), calls = count(['Call booked']);
-  const tile = (n, label) => h('div', { class: 'tile' }, h('b', { text: String(n) }), h('span', { class: 'muted', text: label }));
-  const out = h('div', { class: 'col', style: 'gap:16px' },
-    h('div', { class: 'sheet' }, h('h1', { text: 'Tracker' }),
-      h('p', { class: 'muted', text: sent ? replies + ' of ' + sent + ' sent prospects have replied (' + Math.round(replies / sent * 100) + '%).' : 'Mark a prospect as Sent after you send email 1, and the numbers start here.' })),
+  const tile = (n, label) => h('div', { class: 'tile' }, h('b', { text: String(n) }), h('span', { text: label }));
+  const out = h('div', { class: 'stack' },
+    pageHead('Tracker', sent ? replies + ' of ' + sent + ' sent prospects have replied (' + Math.round(replies / sent * 100) + '%).' : 'Mark a prospect as Sent after you send email 1, and the numbers start here.'),
     h('div', { class: 'tiles' }, tile(ps.length, 'Prospects'), tile(sent, 'Sent'), tile(replies, 'Replied'), tile(calls, 'Calls booked')));
-  if (ps.length) out.appendChild(h('div', { class: 'sheet' }, h('div', { class: 'tablebox' }, h('table', {},
+  if (!ps.length) {
+    out.appendChild(h('div', { class: 'sheet' }, h('div', { class: 'empty' }, clerk(true), h('h2', { text: 'Nothing to track yet' }),
+      h('p', { class: 'muted', text: 'Add prospects and send your first emails. Sent, replies and calls show up here.' }),
+      h('button', { type: 'button', class: 'primary', onclick: () => go('prospects') }, 'Go to prospects'))));
+    return out;
+  }
+  const step = (label, n) => h('div', { class: 'fstep' }, h('span', { text: label }),
+    h('div', { class: 'fbar' }, h('span', { style: 'width:' + Math.round((n / ps.length) * 100) + '%' })), h('b', { text: String(n) }));
+  out.appendChild(h('div', { class: 'sheet' }, h('h2', { text: 'Your pipeline' }),
+    h('div', { class: 'funnel' }, step('In pipeline', ps.length), step('Drafted', drafted), step('Sent', sent), step('Replied', replies), step('Calls booked', calls))));
+  out.appendChild(h('div', { class: 'sheet flush' }, h('div', { class: 'tablebox' }, h('table', {},
     h('thead', {}, h('tr', {}, h('th', { text: 'Company' }), h('th', { text: 'Contact' }), h('th', { text: 'Status' }), h('th', { text: 'Added' }))),
-    h('tbody', {}, ps.map((p) => h('tr', {}, h('td', { text: p.company }), h('td', { text: p.contact || '' }), h('td', {}, chip(p.status)),
-      h('td', { text: new Date(p.created_at).toLocaleDateString() }))))))));
-  else out.appendChild(h('div', { class: 'sheet' }, h('p', { text: 'No prospects yet.' }), h('div', { class: 'row' }, h('button', { type: 'button', class: 'primary', onclick: () => go('prospects') }, 'Add your first prospect'))));
+    h('tbody', {}, ps.map((p) => h('tr', {}, h('td', {}, h('b', { text: p.company })), h('td', { text: p.contact || '' }), h('td', {}, chip(p.status)),
+      h('td', { text: fmtDate(p.created_at) }))))))));
   return out;
 }
 
+// ---------- billing ----------
 function viewBilling() {
   const p = state.profile || {}, plan = PLANS.find((x) => x.id === p.plan);
-  const sheet = h('div', { class: 'sheet' }, h('h1', { text: 'Billing' }));
+  const out = h('div', { class: 'stack' }, pageHead('Billing', 'Your plan and payments. Payments run through Stripe.'));
   if (plan && ['active', 'trialing', 'past_due'].includes(p.subscription_status || '')) {
-    sheet.appendChild(h('p', {}, 'Your plan: ', h('b', { text: plan.name + ' (' + plan.price + ' a month)' }), ' ', chip(p.subscription_status)));
-    if (p.current_period_end) sheet.appendChild(h('p', { class: 'muted', text: 'Renews on ' + new Date(p.current_period_end).toLocaleDateString() + '.' }));
-    if (p.subscription_status === 'past_due') sheet.appendChild(h('div', { class: 'notice' }, h('span', { text: 'Your last payment did not go through. Update your card to keep access.' })));
-  } else if (p.is_admin) sheet.appendChild(h('p', { text: 'You have admin access, so no plan is needed.' }));
-  else if (p.comped) sheet.appendChild(h('p', { text: 'Your access is complimentary during early access. Thanks for testing.' }));
-  else sheet.appendChild(h('p', { text: 'You have no active plan.' }));
-  if (p.stripe_customer_id) sheet.appendChild(h('div', { class: 'row' }, h('button', { type: 'button', class: 'primary', onclick: openPortal }, 'Manage billing'),
-    h('span', { class: 'muted', text: 'Update your card, switch plans, see invoices or cancel, on Stripe.' })));
-  else if (!p.is_admin && !p.comped) sheet.appendChild(viewPlans(false));
-  return sheet;
+    const card = h('div', { class: 'sheet', style: 'max-width:640px' },
+      h('div', { class: 'row between' }, h('h2', { text: plan.name }), chip(p.subscription_status)),
+      h('dl', { class: 'kv' },
+        h('dt', { text: 'Price' }), h('dd', { text: plan.price + ' a month' }),
+        p.current_period_end ? h('dt', { text: 'Renews on' }) : null, p.current_period_end ? h('dd', { text: new Date(p.current_period_end).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }) }) : null));
+    if (p.subscription_status === 'past_due') card.appendChild(h('div', { class: 'nudge' }, 'Your last payment did not go through. Update your card to keep access.'));
+    card.appendChild(h('div', { class: 'row' }, h('button', { type: 'button', class: 'primary', onclick: openPortal }, 'Manage billing'),
+      h('span', { class: 'faint', text: 'Update your card, switch plans, see invoices or cancel, on Stripe.' })));
+    out.appendChild(card);
+  } else if (p.is_admin || p.comped) {
+    out.appendChild(h('div', { class: 'sheet', style: 'max-width:640px' }, h('h2', { text: p.is_admin ? 'Admin access' : 'Complimentary access' }),
+      h('p', { class: 'muted', text: p.is_admin ? 'You have admin access, so no plan is needed.' : 'Your access is complimentary during early access. Thanks for testing.' }),
+      p.stripe_customer_id ? h('div', { class: 'row' }, h('button', { type: 'button', onclick: openPortal }, 'Manage billing')) : null));
+  } else {
+    if (p.stripe_customer_id) out.appendChild(h('div', { class: 'row' }, h('button', { type: 'button', onclick: openPortal }, 'Manage billing'), h('span', { class: 'faint', text: 'See past invoices on Stripe.' })));
+    out.appendChild(h('div', { class: 'plans' }, PLANS.map((pl) => planCard(pl, false))));
+  }
+  return out;
 }
 
 async function loadAdminRows() {
@@ -1195,34 +1416,33 @@ async function setAccess(row, status, comped) {
     busy(true, 'Emailing ' + row.email + '...');
     try {
       const out = await invoke('notify', { event: 'approved', target: row.id });
-      setNotice(out?.sent ? 'Approved. We emailed ' + row.email + ' to let them know.' : 'Approved.');
+      setNotice(out?.sent ? 'Approved. We emailed ' + row.email + ' to let them know.' : 'Approved.', 'success');
     } catch (e) {
-      setNotice('Approved, but the welcome email did not send (' + e.message + ') Let ' + row.email + ' know yourself.');
+      setNotice('Approved, but the welcome email did not send (' + e.message + ') Let ' + row.email + ' know yourself.', 'error');
     }
   }
   busy(false);
   render();
 }
 function viewAdmin() {
-  if (!state.adminRows) { loadAdminRows(); return h('div', { class: 'sheet' }, h('p', { text: 'Loading people...' })); }
+  if (!state.adminRows) { loadAdminRows(); return h('div', { class: 'stack' }, pageHead('People', 'Loading...'), h('div', { class: 'skeleton', style: 'height:160px' })); }
   const rows = state.adminRows, pending = rows.filter((r) => r.status === 'pending');
-  const action = (label, fn, cls) => h('button', { type: 'button', class: cls || '', onclick: fn }, label);
-  return h('div', { class: 'col', style: 'gap:16px' },
-    h('div', { class: 'sheet' }, h('h1', { text: 'People' }),
-      h('p', { class: 'muted', text: pending.length ? pending.length + ' waiting for approval.' : 'Nobody is waiting for approval.' }),
-      h('div', { class: 'row' }, h('button', { type: 'button', onclick: () => { state.adminRows = null; render(); } }, 'Refresh'))),
-    h('div', { class: 'sheet' }, h('div', { class: 'tablebox' }, h('table', {},
-      h('thead', {}, h('tr', {}, ['Email', 'Joined', 'Access', 'Plan', 'Actions'].map((t) => h('th', { text: t })))),
+  const action = (label, fn, cls) => h('button', { type: 'button', class: 'small ' + (cls || ''), onclick: fn }, label);
+  return h('div', { class: 'stack' },
+    pageHead('People', pending.length ? pending.length + ' waiting for approval.' : 'Nobody is waiting for approval.',
+      h('button', { type: 'button', onclick: () => { state.adminRows = null; render(); } }, 'Refresh')),
+    h('div', { class: 'sheet flush' }, h('div', { class: 'tablebox' }, h('table', {},
+      h('thead', {}, h('tr', {}, ['Email', 'Joined', 'Access', 'Plan', ''].map((t) => h('th', { text: t })))),
       h('tbody', {}, rows.map((r) => h('tr', {},
-        h('td', { text: r.email + (r.is_admin ? ' (admin)' : '') }),
-        h('td', { text: new Date(r.created_at).toLocaleDateString() }),
-        h('td', {}, chip(r.status), r.comped ? ' comped' : ''),
+        h('td', {}, h('b', { text: r.email }), r.is_admin ? h('span', { class: 'faint', text: '  admin' }) : null),
+        h('td', { text: fmtDate(r.created_at) }),
+        h('td', {}, chip(r.status), r.comped ? h('span', { class: 'faint', text: '  comped' }) : null),
         h('td', { text: r.plan ? (PLANS.find((x) => x.id === r.plan)?.name || r.plan) + ', ' + (r.subscription_status || '') : (r.subscription_status || 'none') }),
-        h('td', {}, h('div', { class: 'row' },
+        h('td', {}, h('div', { class: 'row', style: 'gap:6px;flex-wrap:nowrap' },
           r.status !== 'approved' ? action('Approve', () => setAccess(r, 'approved', r.comped), 'primary') : null,
           r.status !== 'rejected' && !r.is_admin ? action('Reject', () => setAccess(r, 'rejected', r.comped), 'danger') : null,
           r.status === 'approved' && !r.is_admin ? action(r.comped ? 'Remove comp' : 'Comp access', () => setAccess(r, 'approved', !r.comped)) : null)))))))),
-    h('p', { class: 'muted', text: 'Approving someone lets them choose a plan. Comping gives them access without paying, for testers and early partners.' }));
+    h('p', { class: 'faint', text: 'Approving someone lets them choose a plan. Comping gives them access without paying, for testers and early partners.' }));
 }
 
 // ---------- start ----------
