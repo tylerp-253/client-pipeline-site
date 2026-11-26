@@ -40,6 +40,31 @@ const FIELDS = [
   { k: 'voice', label: 'Paste 2 or 3 emails you have written', ph: 'Real sent emails work best. Drafts will match this voice.', big: true,
     coach: 'Ask them to forward real sent emails, not polished marketing copy.' },
 ];
+const FIELD = Object.fromEntries(FIELDS.map((f) => [f.k, f]));
+// The guided setup: one question per screen. "need" answers must be filled in;
+// the rest can be skipped and added later.
+const STEPS = [
+  { keys: ['agency', 'sender'], need: ['agency', 'sender'], title: "Who's sending these emails?",
+    why: 'Your first name signs every email, so it reads like it came from a person, because it did.' },
+  { keys: ['sells'], need: ['sells'], title: 'What do you sell, and what does it cost?',
+    why: 'Every finding points at a problem this offer fixes. A real price helps the weekly search find companies that can afford you.',
+    example: 'Website messaging and copy for B2B software companies. Projects start at $12,000.' },
+  { keys: ['ideal'], need: ['ideal'], title: 'Who is your ideal client?',
+    why: 'This decides which companies show up in your best fits each week.',
+    example: 'B2B software companies in the US with 20 to 200 staff. I sell to the head of marketing or the founder.' },
+  { keys: ['notFit'], need: [], title: "Who don't you want?",
+    why: "Keeps your weekly suggestions off companies you'd turn down anyway.",
+    example: 'Pre-launch startups with no customers yet, and anyone who wants it done in a week.' },
+  { keys: ['notice'], need: ['notice'], title: "When you look at a prospect, what's the first thing you notice that's wrong?",
+    why: 'This becomes the opening line of email 1, so use the words you would say out loud.',
+    example: 'The homepage talks about features and never says who it is for or what problem it solves.' },
+  { keys: ['giveaway'], need: [], title: 'What would you happily give away on a first call?',
+    why: 'It shapes the value asset you lead with: something useful they get before you ask for anything.',
+    example: 'A five-minute read of their homepage and the one line I would change first.' },
+  { keys: ['proof', 'voice'], need: [], title: 'Make the emails sound like you',
+    why: 'Both are optional. Real results make the emails stronger, and 2 or 3 emails you have sent make the drafts match your voice.' },
+];
+const SUGGEST_WEEKLY = 25;
 const CHECKLIST = ['Kickoff call held', 'Targeting agreed and written down', 'Voice samples collected', 'Test batch of 5 reviewed together', 'Weekly review time booked'];
 const PLANS = [
   { id: 'app', name: 'The app', cta: 'Start with the app', price: '$300', blurb: 'For agencies that want to run it themselves.',
@@ -53,6 +78,7 @@ let sb = null;
 const state = {
   phase: 'loading', user: null, profile: null, workspaces: [], wsId: null, prospects: [],
   open: null, view: 'setup', notice: '', busy: false, confirm: null, sentTo: '', adminRows: null, confirming: false,
+  setup: null, autoRec: null, addMode: null, csv: null,
 };
 const queues = {};
 
@@ -193,35 +219,73 @@ async function invoke(name, body) {
   try { if (error.context && typeof error.context.json === 'function') info = await error.context.json(); } catch { /* not JSON */ }
   throw { code: info?.error || 'network', message: info?.message || 'Could not reach the server. Check your connection and try again.' };
 }
-async function ask(label, task, data) {
+async function ask(label, task, data, opts = {}) {
   if (state.busy) return null;
-  busy(true, label + ' This can take up to a minute.');
+  busy(true, label + (opts.wait || ' This can take up to a minute.'));
   try {
     const out = await invoke('ai', { task, data });
     return out?.result ?? null;
   } catch (e) {
     if (e.code === 'not_approved' || e.code === 'no_plan' || e.code === 'not_signed_in') { await loadAccount(); }
-    setNotice(e.message);
+    setNotice(opts.fix ? opts.fix(e) : e.message);
     return null;
   } finally { busy(false); }
 }
 const promptData = (w, extra) => ({ intake: w.intake || {}, asset: w.asset || null, ...extra });
 const prospectData = (p) => ({ company: p.company, contact: p.contact, role: p.role, url: p.url, notes: p.notes, material: p.material });
+// "Acme Ops | Home" -> "Acme Ops"
+const nameFromTitle = (t) => str(t).split(/\s[|\u2013\u2014:-]\s|\s\|/)[0].trim().slice(0, 200);
+const domainOf = (u) => {
+  let t = str(u).trim(); if (!t) return '';
+  if (!/^https?:\/\//i.test(t)) t = 'https://' + t;
+  try { return new URL(t).hostname.toLowerCase().replace(/^www\./, ''); } catch { return ''; }
+};
+const isEmail = (e) => /^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[a-z]{2,}$/i.test(str(e).trim());
 
 async function recommendAsset() {
   const w = ws(); if (!w) return;
   const r = await ask('Choosing your value asset.', 'recommend', promptData(w));
   if (!r) return;
-  await saveWs(w, { asset: { id: r.assetId, why: r.why, lookFor: r.lookFor, openingAngle: r.openingAngle, runnerUpId: r.runnerUpId, runnerUpWhy: r.runnerUpWhy } });
+  await saveWs(w, { asset: { id: r.assetId, why: r.why, lookFor: r.lookFor, openingAngle: r.openingAngle, runnerUpId: r.runnerUpId, runnerUpWhy: r.runnerUpWhy, sharpen: r.sharpen || [] } });
   render();
+}
+async function prefillFromSite(w, url) {
+  const r = await ask('Reading your website and drafting your answers.', 'prefill', { url }, {
+    wait: ' This takes about 20 seconds.',
+    fix: (e) => (e.code === 'site_unreadable' ? e.message.replace(/ Paste the page text instead\.$/, '') + ' Skip this step and type your answers instead.' : e.message),
+  });
+  if (!r) return false;
+  const intake = { ...(w.intake || {}), website: r.site?.url || url };
+  const drafted = { ...(intake._drafted || {}) };
+  for (const [k, v] of Object.entries(r.answers || {})) {
+    if (v && !str(intake[k]).trim()) { intake[k] = v; drafted[k] = true; }
+  }
+  intake._drafted = drafted;
+  await saveWs(w, { intake });
+  setNotice('');
+  return true;
 }
 async function researchProspect(p) {
   const w = ws(); if (!w) return;
-  if (!str(p.material).trim()) { setNotice("Paste the prospect's material first. The finding has to come from something real."); return; }
-  const r = await ask('Reading the material and drafting three emails.', 'research', promptData(w, { prospect: prospectData(p) }));
+  if (!str(p.material).trim() && !domainOf(p.url)) { setNotice("Add their website or paste their material first. The finding has to come from something real."); return; }
+  const label = str(p.material).trim() ? 'Reading the material and drafting three emails.' : 'Reading ' + domainOf(p.url) + ' and drafting three emails.';
+  const r = await ask(label, 'research', promptData(w, { prospect: prospectData(p) }));
   if (!r) return;
-  if (!r.enough) await saveProspect(p, { missing: r.missing, finding: null, emails: null });
-  else await saveProspect(p, { missing: '', finding: r.finding, emails: r.emails, status: p.status === 'New' ? 'Drafted' : p.status });
+  const extra = {};
+  if (r.material) extra.material = r.material;
+  if (r.siteTitle && (!str(p.company).trim() || p.company === domainOf(p.url))) extra.company = nameFromTitle(r.siteTitle) || p.company;
+  if (!r.enough) await saveProspect(p, { ...extra, missing: r.missing, finding: null, emails: null });
+  else await saveProspect(p, { ...extra, missing: '', finding: r.finding, emails: r.emails, status: ['New', 'Suggested'].includes(p.status) ? 'Drafted' : p.status });
+  render();
+}
+async function findBestFits() {
+  const w = ws(); if (!w) return;
+  const r = await ask('Searching the web for companies that fit your ideal client.', 'find', { workspaceId: w.id }, { wait: ' This takes about a minute.' });
+  if (!r) return;
+  const fresh = (r.added || []).filter((x) => x.workspace_id === w.id && !state.prospects.some((p) => p.id === x.id));
+  state.prospects = [...fresh, ...state.prospects];
+  setNotice(fresh.length ? 'Found ' + fresh.length + ' new best-fit ' + (fresh.length === 1 ? 'company' : 'companies') + '. Add the ones you like to your prospects.'
+    : 'No new strong matches this time. Try again later, or make your ideal client in Setup a little broader.');
   render();
 }
 async function buildAsset(p) {
@@ -490,51 +554,210 @@ function viewWelcome() {
       state.workspaces.length ? h('button', { type: 'button', class: 'quiet', onclick: () => switchWs(state.workspaces[0].id) }, 'Cancel') : null));
 }
 
+// ---------- setup: a guided walkthrough, then a summary ----------
+function firstSetupStep(w) {
+  const i = w.intake || {};
+  if (i._done) return null;
+  if (!i.website && !FIELDS.some((f) => str(i[f.k]).trim())) return 'start';
+  const n = STEPS.findIndex((st) => st.need.some((k) => !str(i[k]).trim()));
+  return n === -1 ? 'plan' : n;
+}
+function goStep(step, extra) {
+  state.setup = { ...state.setup, step, nudge: null, focus: true, ...(extra || {}) };
+  state.notice = '';
+  render();
+  window.scrollTo(0, 0);
+}
+// Instant coaching on the answers that matter most. Shown once per answer:
+// pressing Next again with the same answer moves on.
+function nudgeFor(k, v) {
+  const t = str(v).trim();
+  if (!t) return null;
+  if (k === 'sells') {
+    if (t.length < 25) return 'Add a little more: the one offer you lead with, and what it costs.';
+    if ((t.match(/,|;|\band\b/g) || []).length >= 4) return "That's a few offers. Which one would you sell all day? Lead with that one.";
+    if (!/[$\u20ac\u00a3\u00a5]|\b\d[\d,.]*\s*(k|usd|dollars?|eur|euros?|gbp|pounds?)\b|\b(per|a|each)\s+(month|project|year|hour|engagement)\b|retainer|\/\s?(mo|month|hr|hour|yr)\b/i.test(t)) return "What does it cost? A real price, even a starting price, helps the weekly search find companies that can afford you.";
+  }
+  if (k === 'ideal') {
+    if (t.length < 30) return 'Be a bit more specific: industry, company size, location, and the role you sell to.';
+    if (!/\d|small|mid|large|enterprise|staff|employees|people|revenue|founder|owner|head|director|vp|chief|c[emt]o\b/i.test(t)) return 'Roughly how big are they, and who do you sell to? Size and role make the weekly search much sharper.';
+  }
+  if (k === 'notice' && t.length < 25) return 'What exactly do you spot? Use the words you would say out loud on a call.';
+  return null;
+}
+function modeSwitch(w) {
+  const guided = w.mode === 'guided';
+  return h('div', { class: 'row' },
+    h('div', { class: 'seg', role: 'group', 'aria-label': 'Mode' },
+      h('button', { type: 'button', 'aria-pressed': String(!guided), onclick: () => { saveWs(w, { mode: 'self' }); render(); } }, 'On my own'),
+      h('button', { type: 'button', 'aria-pressed': String(guided), onclick: () => { saveWs(w, { mode: 'guided' }); render(); } }, 'With a coach')),
+    h('span', { class: 'muted', text: guided ? 'Coach prompts show under each question.' : 'Running this on a call? Switch to coach prompts.' }));
+}
 function viewSetup(w) {
-  const guided = w.mode === 'guided', intake = w.intake || (w.intake = {});
-  const out = h('div', { class: 'col', style: 'gap:16px' });
-  out.appendChild(h('div', { class: 'sheet' },
-    h('h1', { text: 'Setup' }),
-    h('p', { class: 'muted', text: 'Short, honest answers work best. Everything saves as you go.' }),
+  if (!w.intake) w.intake = {};
+  if (!state.setup || state.setup.ws !== w.id) state.setup = { ws: w.id, step: firstSetupStep(w), nudge: null, nudged: {}, focus: true };
+  const st = state.setup;
+  if (st.step === null) return viewSetupSummary(w);
+  const total = STEPS.length, at = st.step === 'start' ? 0 : st.step === 'plan' ? total : st.step;
+  const frame = h('div', { class: 'col', style: 'gap:16px' },
+    h('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': String(at), 'aria-label': 'Setup progress' },
+      h('span', { style: 'width:' + Math.round((at / total) * 100) + '%' })));
+  const body = st.step === 'start' ? viewSetupStart(w) : st.step === 'plan' ? viewSetupPlan(w) : viewSetupQuestion(w, st.step);
+  frame.appendChild(body);
+  if (st.step !== 'plan') frame.appendChild(modeSwitch(w));
+  if (st.focus) {
+    st.focus = false;
+    setTimeout(() => { const el = document.querySelector('#main .wizard input, #main .wizard textarea'); if (el) el.focus(); }, 0);
+  }
+  return frame;
+}
+function viewSetupStart(w) {
+  const i = w.intake;
+  const url = h('input', { type: 'url', id: 'site-url', value: str(i.website), placeholder: 'youragency.com', autocomplete: 'url' });
+  const read = async () => {
+    const v = url.value.trim();
+    if (!domainOf(v)) { url.focus(); setNotice('Enter your website address, like youragency.com.'); return; }
+    if (await prefillFromSite(w, v)) goStep(0);
+  };
+  url.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); read(); } });
+  const back = state.setup.returnTo === 'summary';
+  return h('div', { class: 'sheet wizard' },
+    h('p', { class: 'hand', text: back ? 'Your website' : "Let's get you set up." }),
+    h('h1', { class: 'wiz', text: back ? 'Read your website again' : 'Start with your website' }),
+    h('p', { text: back ? 'The app fills in any answers that are still empty. It never overwrites what you wrote.'
+      : "The app reads it and drafts your answers, so you're checking instead of writing. Seven short steps, about five minutes." }),
+    field('site-url', 'Your website', url),
     h('div', { class: 'row' },
-      h('div', { class: 'seg', role: 'group', 'aria-label': 'Mode' },
-        h('button', { type: 'button', 'aria-pressed': String(!guided), onclick: () => { saveWs(w, { mode: 'self' }); render(); } }, 'On my own'),
-        h('button', { type: 'button', 'aria-pressed': String(guided), onclick: () => { saveWs(w, { mode: 'guided' }); render(); } }, 'Guided onboarding')),
-      h('span', { class: 'muted', text: guided ? 'Coach prompts are showing under each question.' : 'Switch to guided onboarding when a coach is running the call.' }))));
-
-  const form = h('div', { class: 'sheet' }, h('h2', { text: 'Your agency' }));
-  FIELDS.forEach((f) => {
-    const id = 'f-' + f.k;
-    const c = f.line ? h('input', { type: 'text', id, value: str(intake[f.k]), placeholder: f.ph || '' })
-      : h('textarea', { id, class: f.big ? 'big' : '', value: str(intake[f.k]), placeholder: f.ph || '' });
-    c.addEventListener('input', () => { intake[f.k] = c.value; });
-    c.addEventListener('change', () => saveWs(w, { intake: { ...intake } }));
-    form.appendChild(field(id, f.label, c));
-    if (guided && f.coach) form.appendChild(h('div', { class: 'coach' }, h('b', { text: 'Coach: ' }), f.coach));
+      h('button', { type: 'button', class: 'primary', onclick: read }, 'Read my site'),
+      back ? h('button', { type: 'button', onclick: () => goStep(null) }, 'Back to setup')
+        : h('button', { type: 'button', class: 'quiet', onclick: () => { if (url.value.trim()) saveWs(w, { intake: { ...w.intake, website: url.value.trim() } }); goStep(0); } }, "Skip, I'll type my answers")));
+}
+function viewSetupQuestion(w, n) {
+  const step = STEPS[n], i = w.intake, st = state.setup, guided = w.mode === 'guided';
+  const drafted = i._drafted || {};
+  const box = h('div', { class: 'sheet wizard' },
+    h('p', { class: 'label', text: 'Step ' + (n + 1) + ' of ' + STEPS.length }),
+    h('h1', { class: 'wiz', text: step.title }),
+    h('p', { class: 'muted', text: step.why }));
+  const next = () => {
+    // Moving on counts as checking a drafted answer.
+    if (i._drafted && step.keys.some((k) => i._drafted[k])) { i._drafted = { ...i._drafted }; step.keys.forEach((k) => delete i._drafted[k]); }
+    saveWs(w, { intake: { ...i } });
+    for (const k of step.keys) {
+      const msg = nudgeFor(k, i[k]);
+      if (msg && st.nudged[k] !== str(i[k]).trim()) {
+        st.nudged[k] = str(i[k]).trim(); st.nudge = { k, msg }; render(); return;
+      }
+    }
+    const empty = step.need.find((k) => !str(i[k]).trim());
+    if (empty) { st.nudge = { k: empty, msg: 'Add an answer, even a rough one. You can change it any time.' }; render(); return; }
+    // An answer they've just worked on no longer needs the "sharpen" prompt.
+    if (w.asset?.sharpen?.some((x) => step.keys.includes(x.field))) {
+      saveWs(w, { asset: { ...w.asset, sharpen: w.asset.sharpen.filter((x) => !step.keys.includes(x.field)) } });
+    }
+    if (st.returnTo) goStep(st.returnTo === 'summary' ? null : 'plan', { returnTo: null });
+    else goStep(n + 1 < STEPS.length ? n + 1 : 'plan');
+  };
+  step.keys.forEach((k) => {
+    const f = FIELD[k], id = 'f-' + k;
+    const c = f.line ? h('input', { type: 'text', id, value: str(i[k]), placeholder: f.ph || '' })
+      : h('textarea', { id, class: f.big ? 'big' : '', value: str(i[k]), placeholder: f.ph || '' });
+    c.addEventListener('input', () => {
+      i[k] = c.value;
+      if (drafted[k]) { delete drafted[k]; i._drafted = { ...drafted }; const b = $('drafted-' + k); if (b) b.remove(); }
+    });
+    c.addEventListener('change', () => saveWs(w, { intake: { ...i } }));
+    if (f.line) c.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); i[k] = c.value; next(); } });
+    const label = step.keys.length > 1 ? f.label : (step.need.includes(k) ? 'Your answer' : 'Your answer (optional)');
+    box.appendChild(h('div', { class: 'col' },
+      h('label', { for: id, text: label }),
+      drafted[k] ? h('p', { class: 'badge', id: 'drafted-' + k, text: 'Drafted from your website. Make it yours.' }) : null,
+      c));
+    if (st.nudge && st.nudge.k === k) box.appendChild(h('div', { class: 'nudge', role: 'status' }, h('b', { text: 'Quick thought: ' }), st.nudge.msg));
+    if (guided && f.coach) box.appendChild(h('div', { class: 'coach' }, h('b', { text: 'Coach: ' }), f.coach));
   });
-  out.appendChild(form);
-
+  if (step.example) box.appendChild(h('p', { class: 'muted' }, h('b', { text: 'Example: ' }), step.example));
+  const last = n === STEPS.length - 1, editing = !!st.returnTo;
+  box.appendChild(h('div', { class: 'row' },
+    h('button', { type: 'button', class: 'primary', onclick: next }, editing ? 'Save' : last ? 'See my plan' : 'Next'),
+    editing ? h('button', { type: 'button', onclick: () => goStep(st.returnTo === 'summary' ? null : 'plan', { returnTo: null }) }, 'Cancel')
+      : h('button', { type: 'button', onclick: () => goStep(n === 0 ? 'start' : n - 1) }, 'Back'),
+    !editing && !step.need.length ? h('button', { type: 'button', class: 'quiet', onclick: () => goStep(last ? 'plan' : n + 1) }, 'Skip for now') : null));
+  return box;
+}
+function assetSheet(w) {
   const a = w.asset ? assetById(w.asset.id) : null;
-  const card = h('div', { class: 'sheet' }, h('h2', { text: 'Your value asset' }),
-    h('p', { class: 'muted', text: 'The one useful thing you make for each prospect before you ask for anything. Every email leads with a finding from it.' }));
+  const card = h('div', { class: 'col' });
   if (a) {
     card.appendChild(h('div', { class: 'block soft' },
-      h('h3', { text: a.name }), h('p', { text: a.deliverable }),
+      h('p', { class: 'label', text: 'You lead with' }),
+      h('h2', { text: a.name }), h('p', { text: a.deliverable }),
       w.asset.why ? h('p', { text: w.asset.why }) : null,
       w.asset.lookFor?.length ? h('div', { class: 'col' }, h('b', { text: 'Look for in each prospect' }), h('ul', { class: 'plain' }, w.asset.lookFor.map((t) => h('li', { text: t })))) : null,
-      w.asset.openingAngle ? h('p', {}, h('b', { text: 'How email 1 opens: ' }), w.asset.openingAngle) : null,
-      h('p', {}, h('b', { text: 'For each prospect: ' }), a.paste)));
+      w.asset.openingAngle ? h('p', {}, h('b', { text: 'How email 1 opens: ' }), w.asset.openingAngle) : null));
     const ru = assetById(w.asset.runnerUpId);
     if (ru) card.appendChild(h('p', { class: 'muted', text: 'Runner-up: ' + ru.name + '. ' + str(w.asset.runnerUpWhy) }));
   }
   const pick = h('select', { id: 'asset-pick', 'aria-label': 'Choose a value asset yourself', onchange: (e) => {
     if (!e.target.value) return;
-    saveWs(w, { asset: { id: e.target.value, why: '', lookFor: [], openingAngle: '' } }); render();
-  } }, h('option', { value: '', text: 'Or choose one yourself' }), ASSETS.map((x) => h('option', { value: x.id, text: x.name + ' (' + x.fits + ')' })));
+    saveWs(w, { asset: { id: e.target.value, why: '', lookFor: [], openingAngle: '', sharpen: w.asset?.sharpen || [] } }); render();
+  } }, h('option', { value: '', text: a ? 'Choose a different one' : 'Or choose one yourself' }), ASSETS.map((x) => h('option', { value: x.id, text: x.name + ' (' + x.fits + ')' })));
   card.appendChild(h('div', { class: 'row' },
-    h('button', { type: 'button', class: 'primary', onclick: recommendAsset }, a ? 'Recommend again from my answers' : 'Recommend my value asset'), pick));
-  if (a) card.appendChild(h('div', { class: 'row' }, h('button', { type: 'button', onclick: () => go('prospects') }, 'Next: add prospects')));
-  out.appendChild(card);
+    h('button', { type: 'button', class: a ? '' : 'primary', onclick: recommendAsset }, a ? 'Recommend again from my answers' : 'Recommend my value asset'), pick));
+  return card;
+}
+const SHORT = { sells: 'Your offer', ideal: 'Your ideal client', notFit: "Who you don't want", notice: 'What you notice first', giveaway: 'What you give away' };
+const stepOf = (k) => STEPS.findIndex((s) => s.keys.includes(k));
+function sharpenList(w) {
+  const items = (w.asset?.sharpen || []).filter((x) => FIELD[x.field]);
+  if (!items.length) return null;
+  return h('div', { class: 'col' },
+    h('h3', { text: items.length === 1 ? 'One answer worth sharpening' : 'Two answers worth sharpening' }),
+    items.map((x) => h('div', { class: 'nudge row', style: 'justify-content:space-between' },
+      h('span', {}, h('b', { text: SHORT[x.field] + ': ' }), x.question),
+      h('button', { type: 'button', onclick: () => goStep(stepOf(x.field), { returnTo: state.setup.step === null ? 'summary' : 'plan' }) }, 'Edit answer'))));
+}
+function viewSetupPlan(w) {
+  if (!w.asset && state.autoRec !== w.id) { state.autoRec = w.id; setTimeout(recommendAsset, 0); }
+  const finish = () => {
+    saveWs(w, { intake: { ...w.intake, _done: true } });
+    state.setup = { ...state.setup, step: null };
+    state.addMode = 'find';
+    go('prospects');
+  };
+  return h('div', { class: 'sheet wizard' },
+    h('p', { class: 'hand', text: "That's the hard part done." }),
+    h('h1', { class: 'wiz', text: 'Your plan' }),
+    h('p', { text: "Here's the one useful thing you'll make for every prospect. Each email opens with a finding from it." }),
+    w.asset ? null : h('p', { class: 'muted', text: 'Choosing the best fit from your answers...' }),
+    assetSheet(w),
+    sharpenList(w),
+    h('div', { class: 'row' },
+      h('button', { type: 'button', class: 'primary', disabled: !w.asset, onclick: finish }, 'Find my first prospects'),
+      h('button', { type: 'button', onclick: () => goStep(STEPS.length - 1) }, 'Back')));
+}
+function viewSetupSummary(w) {
+  const i = w.intake, guided = w.mode === 'guided';
+  const out = h('div', { class: 'col', style: 'gap:16px' });
+  out.appendChild(h('div', { class: 'sheet' },
+    h('h1', { text: 'Setup' }),
+    h('p', { class: 'muted', text: 'Your answers drive every finding, email and weekly suggestion. Change anything, any time.' }),
+    modeSwitch(w),
+    h('div', { class: 'row' }, h('button', { type: 'button', onclick: () => goStep(0, { returnTo: null, nudged: {} }) }, 'Walk through setup again'))));
+
+  const rows = h('div', { class: 'answers' });
+  const line = (label, value, onEdit) => rows.appendChild(h('div', { class: 'answer' },
+    h('div', { class: 'col', style: 'gap:2px' }, h('b', { text: label }), value ? h('span', { text: value }) : h('span', { class: 'muted', text: 'Not answered yet' })),
+    h('button', { type: 'button', class: 'quiet', onclick: onEdit, 'aria-label': 'Edit ' + label }, 'Edit')));
+  line('Website', str(i.website), () => goStep('start', { returnTo: 'summary' }));
+  FIELDS.forEach((f) => line(f.label, f.k === 'voice' && str(i.voice).trim() ? 'Added (' + str(i.voice).trim().split(/\s+/).length + ' words)' : str(i[f.k]).trim(),
+    () => goStep(stepOf(f.k), { returnTo: 'summary' })));
+  out.appendChild(h('div', { class: 'sheet' }, h('h2', { text: 'Your answers' }), rows));
+
+  out.appendChild(h('div', { class: 'sheet' }, h('h2', { text: 'Your value asset' }),
+    h('p', { class: 'muted', text: 'The one useful thing you make for each prospect before you ask for anything.' }),
+    assetSheet(w), sharpenList(w),
+    w.asset ? h('div', { class: 'row' }, h('button', { type: 'button', onclick: () => go('prospects') }, 'Go to prospects')) : null));
 
   if (guided) {
     const cl = w.checklist || {};
@@ -569,59 +792,219 @@ function viewSetup(w) {
 }
 
 const chip = (status) => h('span', { class: 'chip s-' + str(status).replace(/\s+/g, ''), text: status });
-const addedThisWeek = () => { const cut = Date.now() - 7 * 864e5; return state.prospects.filter((p) => Date.parse(p.created_at) >= cut).length; };
+const addedThisWeek = () => { const cut = Date.now() - 7 * 864e5; return state.prospects.filter((p) => inPipeline(p) && Date.parse(p.created_at) >= cut).length; };
+const suggestedThisWeek = () => { const cut = Date.now() - 7 * 864e5; return state.prospects.filter((p) => p.source === 'suggested' && Date.parse(p.created_at) >= cut).length; };
+const inPipeline = (p) => p.status !== 'Suggested' && !(p.source === 'suggested' && p.status === 'Not a fit' && !p.finding);
+const gmailLink = (to, subject, body) => 'https://mail.google.com/mail/?view=cm&fs=1' +
+  (isEmail(to) ? '&to=' + encodeURIComponent(str(to).trim()) : '') + '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
 
+// ---------- CSV import ----------
+function parseCsv(text) {
+  const firstLine = text.split(/\r?\n/, 1)[0] || '';
+  const sep = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ';' : (firstLine.includes('\t') && !firstLine.includes(',') ? '\t' : ',');
+  const rows = []; let row = [], cell = '', quoted = false;
+  for (let n = 0; n < text.length; n++) {
+    const c = text[n];
+    if (quoted) {
+      if (c === '"') { if (text[n + 1] === '"') { cell += '"'; n++; } else quoted = false; } else cell += c;
+    } else if (c === '"' && !cell) quoted = true;
+    else if (c === sep) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[n + 1] === '\n') n++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.map((r) => r.map((x) => x.trim())).filter((r) => r.some(Boolean));
+}
+const CSV_COLUMNS = {
+  company: ['company', 'company name', 'companyname', 'organization', 'organisation', 'account', 'account name', 'business', 'business name'],
+  url: ['website', 'url', 'domain', 'company website', 'company url', 'company domain', 'site', 'web', 'homepage', 'website url'],
+  first: ['first name', 'firstname', 'first', 'contact first name', 'given name'],
+  name: ['contact', 'contact name', 'name', 'full name', 'person'],
+  email: ['email', 'email address', 'e-mail', 'work email', 'contact email', 'business email'],
+  role: ['title', 'job title', 'role', 'position', 'job role'],
+};
+function csvProspects(text) {
+  const rows = parseCsv(text.replace(/^\ufeff/, ''));
+  if (rows.length < 2) return { error: 'That file needs a header row and at least one prospect.' };
+  const head = rows[0].map((x) => x.toLowerCase().replace(/[_]+/g, ' ').trim());
+  const col = (k) => head.findIndex((x) => CSV_COLUMNS[k].includes(x));
+  const at = { company: col('company'), url: col('url'), first: col('first'), name: col('name'), email: col('email'), role: col('role') };
+  if (at.company < 0 && at.url < 0) return { error: 'We could not find a Company or Website column. Name one of your columns "Company" or "Website".' };
+  const have = new Set(state.prospects.map((p) => domainOf(p.url)).filter(Boolean));
+  const seen = new Set(), out = []; let dupes = 0;
+  for (const r of rows.slice(1)) {
+    const get = (k) => (at[k] >= 0 ? str(r[at[k]]).trim() : '');
+    const url = get('url'), d = domainOf(url);
+    const company = get('company') || d;
+    if (!company) continue;
+    const key = d || company.toLowerCase();
+    if ((d && have.has(d)) || seen.has(key)) { dupes++; continue; }
+    seen.add(key);
+    const email = isEmail(get('email')) ? get('email') : '';
+    out.push({ company: company.slice(0, 200), url: d ? (/^https?:\/\//i.test(url) ? url : 'https://' + url).slice(0, 500) : '',
+      contact: (get('first') || get('name').split(/\s+/)[0] || '').slice(0, 200), email: email.slice(0, 320), role: get('role').slice(0, 200) });
+  }
+  return { rows: out.slice(0, 300), dupes, cut: Math.max(0, out.length - 300) };
+}
+async function importRows(w, rows) {
+  busy(true, 'Importing ' + rows.length + ' prospects...');
+  try {
+    const added = [];
+    for (let n = 0; n < rows.length; n += 100) {
+      const { data, error } = await sb.from('prospects').insert(rows.slice(n, n + 100).map((r) => ({ ...r, workspace_id: w.id, source: 'import' }))).select();
+      if (error) throw error;
+      added.push(...data);
+    }
+    state.prospects = [...added.reverse(), ...state.prospects];
+    state.csv = null;
+    setNotice('Imported ' + added.length + ' prospects. Open one and press "Find the gap and draft emails" to start.');
+  } catch (e) { saveFailed(e); } finally { busy(false); render(); }
+}
+
+// ---------- prospects tab ----------
 function viewProspects(w) {
   const a = assetById(w.asset?.id), out = h('div', { class: 'col', style: 'gap:16px' });
+  const hasIdeal = str(w.intake?.ideal).trim().length >= 15;
+  if (!state.addMode) state.addMode = state.prospects.length ? 'one' : (hasIdeal ? 'find' : 'one');
   out.appendChild(h('div', { class: 'sheet' }, h('h1', { text: 'Prospects' }),
-    a ? h('p', {}, 'Leading with: ', h('b', { text: a.name }), '. ' + addedThisWeek() + ' of ' + WEEK_TARGET + ' added this week.')
-      : h('div', { class: 'row' }, h('span', { text: 'Choose your value asset in Setup first, so the findings fit what you sell.' }), h('button', { type: 'button', onclick: () => go('setup') }, 'Go to Setup'))));
+    a ? h('p', {}, 'Leading with ', h('b', { text: a.name }), '. ' + addedThisWeek() + ' added this week. Aim for ' + WEEK_TARGET + '.')
+      : h('div', { class: 'row' }, h('span', { text: 'Finish Setup first, so the findings fit what you sell.' }), h('button', { type: 'button', onclick: () => go('setup') }, 'Go to Setup'))));
 
-  const d = { company: '', contact: '', role: '', url: '', material: '', notes: '' };
-  const mk = (k, ph, area) => {
-    const el = area ? h('textarea', { id: 'np-' + k, class: k === 'material' ? 'big' : '', placeholder: ph }) : h('input', { type: 'text', id: 'np-' + k, placeholder: ph });
+  const modes = [['find', 'Best fits'], ['one', 'Add one'], ['csv', 'Import list']];
+  const entry = h('div', { class: 'sheet' },
+    h('div', { class: 'seg wide', role: 'tablist', 'aria-label': 'Ways to add prospects' },
+      modes.map(([m, label]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(state.addMode === m), 'aria-pressed': String(state.addMode === m),
+        onclick: () => { state.addMode = m; render(); } }, label))));
+  if (state.addMode === 'one') addOneForm(w, a, entry);
+  else if (state.addMode === 'csv') importForm(w, entry);
+  else bestFits(w, hasIdeal, entry);
+  out.appendChild(entry);
+
+  const list = state.prospects.filter(inPipeline);
+  if (list.length) out.appendChild(h('h2', { class: 'label', text: 'Your prospects (' + list.length + ')' }));
+  list.forEach((p) => out.appendChild(prospectCard(p, a || ASSETS[0])));
+  return out;
+}
+function addOneForm(w, a, box) {
+  const d = { url: '', company: '', contact: '', email: '', role: '', material: '' };
+  const mk = (k, type, ph, area) => {
+    const el = area ? h('textarea', { id: 'np-' + k, class: 'big', placeholder: ph }) : h('input', { type, id: 'np-' + k, placeholder: ph, autocomplete: 'off' });
     el.addEventListener('input', () => { d[k] = el.value; });
     return el;
   };
-  const save = async () => {
-    if (!d.company.trim()) { $('np-company').focus(); return; }
+  const save = async (draft) => {
+    const dom = domainOf(d.url);
+    if (!dom && !d.company.trim()) { $('np-url').focus(); setNotice('Add their website, or at least a company name.'); return; }
+    if (d.email.trim() && !isEmail(d.email)) { $('np-email').focus(); setNotice('That email address does not look right.'); return; }
+    const dup = dom && state.prospects.find((p) => domainOf(p.url) === dom);
+    if (dup) { state.open = dup.id; setNotice(dup.company + ' is already in your list, so we opened it.'); render(); return; }
     busy(true, 'Saving...');
     const { data, error } = await sb.from('prospects').insert({
-      workspace_id: w.id, company: d.company.trim().slice(0, 200), contact: d.contact.trim(), role: d.role.trim(),
-      url: d.url.trim(), material: d.material.slice(0, 20000), notes: d.notes.slice(0, 5000),
+      workspace_id: w.id, company: (d.company.trim() || dom).slice(0, 200), contact: d.contact.trim(), role: d.role.trim(), email: d.email.trim(),
+      url: dom ? (/^https?:\/\//i.test(d.url.trim()) ? d.url.trim() : 'https://' + d.url.trim()).slice(0, 500) : '', material: d.material.slice(0, 20000), source: 'manual',
     }).select().single();
     busy(false);
     if (error) { saveFailed(error); return; }
     state.prospects.unshift(data); state.open = data.id; render();
+    if (draft) await researchProspect(data);
   };
-  out.appendChild(h('details', { class: 'sheet add', open: !state.prospects.length },
-    h('summary', {}, 'Add a prospect'),
-    field('np-company', 'Company', mk('company', 'Company name')),
-    field('np-contact', 'Contact first name', mk('contact', 'Who the email goes to')),
-    field('np-role', 'Role', mk('role', 'Owner, head of marketing...')),
-    field('np-url', 'Website', mk('url', 'https://')),
-    field('np-material', 'Their material', mk('material', 'Paste it here', true), (a || ASSETS[0]).paste + ' The finding comes only from what you paste.'),
-    field('np-notes', 'Your notes (optional)', mk('notes', 'Anything you noticed yourself', true)),
-    h('div', { class: 'row' }, h('button', { type: 'button', class: 'primary', onclick: save }, 'Save prospect'))));
-  state.prospects.forEach((p) => out.appendChild(prospectCard(p, a || ASSETS[0])));
-  return out;
+  box.appendChild(h('p', { class: 'muted', text: "Paste their website. The app reads it, finds the gap, and drafts three emails. You don't need to copy anything from their site." }));
+  box.appendChild(h('div', { class: 'grid2' },
+    field('np-url', 'Their website', mk('url', 'url', 'theircompany.com')),
+    field('np-company', 'Company (optional)', mk('company', 'text', 'We take it from their site')),
+    field('np-contact', 'Contact first name', mk('contact', 'text', 'Who the email goes to')),
+    field('np-email', 'Contact email', mk('email', 'email', 'name@theircompany.com')),
+    field('np-role', 'Role (optional)', mk('role', 'text', 'Owner, head of marketing...'))));
+  box.appendChild(h('details', {}, h('summary', { text: 'Paste their material instead' }),
+    h('p', { class: 'muted', text: (a || ASSETS[0]).paste + ' Use this when their site blocks readers or you have better material.' }),
+    mk('material', '', 'Paste it here', true)));
+  box.appendChild(h('div', { class: 'row' },
+    h('button', { type: 'button', class: 'primary', onclick: () => save(true) }, 'Save and draft emails'),
+    h('button', { type: 'button', onclick: () => save(false) }, 'Just save')));
+}
+function importForm(w, box) {
+  box.appendChild(h('p', { class: 'muted', text: 'Upload a CSV from your CRM or a list you already have. We look for these columns: Company, Website, First name, Email and Title. Up to 300 at a time, and we skip any you already have.' }));
+  const input = h('input', { type: 'file', id: 'csv-file', accept: '.csv,text/csv,text/plain' });
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0]; if (!file) return;
+    if (file.size > 3_000_000) { setNotice('That file is too big. Split it into files under 3 MB.'); return; }
+    const parsed = csvProspects(await file.text());
+    if (parsed.error) { setNotice(parsed.error); state.csv = null; } else state.csv = { name: file.name, ...parsed };
+    render();
+  });
+  box.appendChild(field('csv-file', 'Your CSV file', input));
+  const c = state.csv;
+  if (c) {
+    const withSite = c.rows.filter((r) => r.url).length, withEmail = c.rows.filter((r) => r.email).length;
+    box.appendChild(h('div', { class: 'block soft' },
+      h('p', {}, h('b', { text: c.rows.length + ' new prospects' }), ' in ' + c.name + '. ' + withSite + ' have a website and ' + withEmail + ' have an email.' +
+        (c.dupes ? ' Skipping ' + c.dupes + ' you already have or that repeat.' : '') + (c.cut ? ' Only the first 300 will be imported.' : '')),
+      withSite < c.rows.length ? h('p', { class: 'muted', text: 'Prospects without a website need material pasted in before the app can draft emails for them.' }) : null,
+      c.rows.length ? h('div', { class: 'tablebox' }, h('table', {},
+        h('thead', {}, h('tr', {}, ['Company', 'Website', 'Contact', 'Email'].map((t) => h('th', { text: t })))),
+        h('tbody', {}, c.rows.slice(0, 5).map((r) => h('tr', {}, h('td', { text: r.company }), h('td', { text: domainOf(r.url) }), h('td', { text: r.contact }), h('td', { text: r.email })))))) : null,
+      h('div', { class: 'row' },
+        h('button', { type: 'button', class: 'primary', disabled: !c.rows.length, onclick: () => importRows(w, c.rows) }, 'Import ' + c.rows.length + ' prospects'),
+        h('button', { type: 'button', class: 'quiet', onclick: () => { state.csv = null; render(); } }, 'Clear'))));
+  }
+}
+function bestFits(w, hasIdeal, box) {
+  const used = suggestedThisWeek(), left = Math.max(0, SUGGEST_WEEKLY - used);
+  box.appendChild(h('p', { class: 'muted', text: 'The app searches the web for companies that match your ideal client, scores each one, and tells you why it fits. Up to ' + SUGGEST_WEEKLY + ' a week, so you only see the best.' }));
+  if (!hasIdeal) {
+    box.appendChild(h('div', { class: 'row' }, h('span', { text: 'Describe your ideal client in Setup first, so the search knows who to look for.' }),
+      h('button', { type: 'button', onclick: () => { state.setup = null; go('setup'); } }, 'Go to Setup')));
+    return;
+  }
+  box.appendChild(h('div', { class: 'row' },
+    h('button', { type: 'button', class: 'primary', disabled: !left, onclick: findBestFits }, used ? 'Find more best fits' : 'Find my best fits'),
+    h('span', { class: 'muted', text: used + ' of ' + SUGGEST_WEEKLY + ' used this week.' + (left ? '' : ' More open up as this week\'s age out.') })));
+  const sug = state.prospects.filter((p) => p.status === 'Suggested').sort((x, y) => (y.fit_score ?? 0) - (x.fit_score ?? 0));
+  if (!sug.length) return;
+  box.appendChild(h('div', { class: 'row', style: 'justify-content:space-between' },
+    h('h2', { text: sug.length + ' waiting for you' }),
+    sug.length > 1 ? h('button', { type: 'button', onclick: async () => { for (const p of sug) await saveProspect(p, { status: 'New' }); render(); } }, 'Add all ' + sug.length) : null));
+  sug.forEach((p) => box.appendChild(h('div', { class: 'block suggestion' },
+    h('div', { class: 'row', style: 'justify-content:space-between;align-items:flex-start' },
+      h('div', { class: 'col', style: 'gap:2px' }, h('span', { class: 'pname', text: p.company }),
+        h('span', { class: 'muted', text: [domainOf(p.url), [p.contact, p.role].filter(Boolean).join(', ')].filter(Boolean).join(' \u00b7 ') })),
+      p.fit_score != null ? h('span', { class: 'score', title: 'How closely they match your ideal client', text: 'Fit ' + p.fit_score }) : null),
+    p.fit_reason ? h('p', { text: p.fit_reason }) : null,
+    h('div', { class: 'row' },
+      h('button', { type: 'button', class: 'primary', onclick: async () => { await saveProspect(p, { status: 'New' }); state.open = p.id; render(); } }, 'Add to my prospects'),
+      h('button', { type: 'button', class: 'quiet', onclick: async () => { await saveProspect(p, { status: 'Not a fit' }); render(); } }, 'Not a fit'),
+      /^https:\/\//.test(str(p.url)) ? h('a', { href: p.url, target: '_blank', rel: 'noopener noreferrer', text: 'Their site' }) : null,
+      /^https:\/\//.test(str(p.source_url)) ? h('a', { href: p.source_url, target: '_blank', rel: 'noopener noreferrer', text: 'Where we found them' }) : null))));
 }
 
 function prospectCard(p, a) {
   const open = state.open === p.id, card = h('div', { class: 'sheet' });
   card.appendChild(h('button', { type: 'button', class: 'phead', 'aria-expanded': String(open), onclick: () => { state.open = open ? null : p.id; state.confirm = null; render(); } },
-    h('span', { class: 'col', style: 'gap:0' }, h('span', { class: 'pname', text: p.company }), h('span', { class: 'muted', text: [p.contact, p.role].filter(Boolean).join(', ') || 'No contact yet' })),
+    h('span', { class: 'col', style: 'gap:0' }, h('span', { class: 'pname', text: p.company }),
+      h('span', { class: 'muted', text: [p.contact, p.role].filter(Boolean).join(', ') || domainOf(p.url) || 'No contact yet' })),
     chip(p.status)));
   if (!open) return card;
 
+  const contact = h('input', { type: 'text', id: 'pc-' + p.id, value: str(p.contact), placeholder: 'First name' });
+  contact.addEventListener('change', () => saveProspect(p, { contact: contact.value.trim().slice(0, 200) }));
+  const email = h('input', { type: 'email', id: 'pe-' + p.id, value: str(p.email), placeholder: 'name@theircompany.com' });
+  email.addEventListener('change', () => {
+    const v = email.value.trim();
+    if (v && !isEmail(v)) { setNotice('That email address does not look right.'); return; }
+    saveProspect(p, { email: v.slice(0, 320) }); render();
+  });
+  card.appendChild(h('div', { class: 'grid2' }, field('pc-' + p.id, 'Contact first name', contact), field('pe-' + p.id, 'Contact email', email)));
   card.appendChild(h('div', { class: 'row' }, h('label', { for: 'st-' + p.id, text: 'Status' }),
     h('select', { id: 'st-' + p.id, onchange: (e) => { saveProspect(p, { status: e.target.value }); render(); } },
       STATUSES.map((s) => h('option', { value: s, selected: s === p.status, text: s }))),
     /^https:\/\//.test(str(p.url)) ? h('a', { href: p.url, target: '_blank', rel: 'noopener noreferrer', text: 'Open their site' }) : null));
-  const mat = h('textarea', { id: 'mat-' + p.id, class: 'big', value: str(p.material), placeholder: 'Paste it here', maxlength: '20000' });
+
+  const mat = h('textarea', { id: 'mat-' + p.id, class: 'big', value: str(p.material), placeholder: domainOf(p.url) ? 'Leave empty and the app reads ' + domainOf(p.url) + ' for you.' : 'Paste it here', maxlength: '20000' });
   mat.addEventListener('input', () => { p.material = mat.value; });
   mat.addEventListener('change', () => saveProspect(p, { material: mat.value }));
-  card.appendChild(field('mat-' + p.id, 'Their material', mat, a.paste));
+  const matBox = h('details', { open: !domainOf(p.url) || !!p.missing }, h('summary', { text: str(p.material).trim() ? 'What the finding is based on' : 'Their material' }),
+    field('mat-' + p.id, 'Their material', mat, a.paste));
+  card.appendChild(matBox);
   card.appendChild(h('div', { class: 'row' }, h('button', { type: 'button', class: 'primary', onclick: () => researchProspect(p) }, p.finding ? 'Redo the finding and emails' : 'Find the gap and draft emails')));
   if (p.missing) card.appendChild(h('div', { class: 'notice' }, h('span', { text: 'More material needed: ' + p.missing })));
 
@@ -630,15 +1013,22 @@ function prospectCard(p, a) {
       p.finding.evidence ? h('p', {}, h('span', { class: 'quote', text: p.finding.evidence })) : null,
       p.finding.whyItMatters ? h('p', { class: 'muted', text: p.finding.whyItMatters }) : null,
       h('p', { class: 'hand', text: 'Check the quote against their live page before you send.' })));
+    if (!isEmail(p.email)) card.appendChild(h('p', { class: 'muted', text: 'Add their email above and "Open in Gmail" fills in the To line for you.' }));
     (p.emails || []).forEach((e, n) => {
       const sid = 'es-' + p.id + '-' + n, bid = 'eb-' + p.id + '-' + n;
       const sI = h('input', { type: 'text', id: sid, value: e.subject }), bI = h('textarea', { id: bid, class: 'big', value: e.body });
       const persist = () => saveProspect(p, { emails: p.emails.map((x, i) => (i === n ? { subject: sI.value, body: bI.value } : x)) });
       sI.addEventListener('change', persist); bI.addEventListener('change', persist);
+      const openGmail = () => {
+        window.open(gmailLink(p.email, sI.value, bI.value), '_blank', 'noopener');
+        if (n === 0 && ['New', 'Drafted', 'Approved'].includes(p.status)) setNotice('Opened email 1 in Gmail. Once you send it, set ' + p.company + ' to Sent so the tracker counts it.');
+      };
       card.appendChild(h('div', { class: 'block' },
         h('h3', { text: n === 0 ? 'Day 0: email 1' : n === 1 ? 'Day 3: follow-up' : 'Day 10: close the loop' }),
         field(sid, 'Subject', sI), field(bid, 'Body', bI),
-        h('div', { class: 'row' }, h('button', { type: 'button', onclick: (ev) => copyText('Subject: ' + sI.value + '\n\n' + bI.value, ev.target) }, 'Copy email'))));
+        h('div', { class: 'row' },
+          h('button', { type: 'button', onclick: openGmail, title: 'Opens a new Gmail message. If you close it without sending, Gmail keeps it as a draft.' }, 'Open in Gmail'),
+          h('button', { type: 'button', onclick: (ev) => copyText('Subject: ' + sI.value + '\n\n' + bI.value, ev.target) }, 'Copy email'))));
     });
     const ab = h('div', { class: 'block' }, h('h3', { text: 'Full ' + a.name }), h('p', { class: 'muted', text: 'Build this for prospects who reply, or for your top few each week.' }));
     if (p.asset) {
@@ -666,7 +1056,7 @@ function prospectCard(p, a) {
 }
 
 function viewTracker() {
-  const ps = state.prospects, count = (list) => ps.filter((p) => list.includes(p.status)).length;
+  const ps = state.prospects.filter(inPipeline), count = (list) => ps.filter((p) => list.includes(p.status)).length;
   const sent = count(['Sent', 'Replied', 'Call booked']), replies = count(['Replied', 'Call booked']), calls = count(['Call booked']);
   const tile = (n, label) => h('div', { class: 'tile' }, h('b', { text: String(n) }), h('span', { class: 'muted', text: label }));
   const out = h('div', { class: 'col', style: 'gap:16px' },

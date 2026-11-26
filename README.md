@@ -5,7 +5,7 @@ The outbound system for marketing agencies: a landing page and the app behind it
 | Path | What it is |
 | --- | --- |
 | `index.html` | The public landing page. Its buttons and "Sign in" link go to the app. |
-| `app/` | The app: magic-link sign-in, approval, Stripe plans, admin, and the workspace tools (setup, value asset, prospects, emails, one-page assets, tracker). Plain HTML and JavaScript, no build step. |
+| `app/` | The app: magic-link sign-in, approval, Stripe plans, admin, and the workspace tools (a guided setup that drafts answers from the agency's website; prospects added by website, imported from a CSV, or suggested by a weekly web search capped at 25; emails with Open in Gmail; one-page assets; tracker). Plain HTML and JavaScript, no build step. |
 | `app/config.js` | The Supabase Project URL and publishable key. The only settings that live in this repository. |
 | `supabase/migrations/` | The database: tables, row-level security, approval and usage-limit functions. |
 | `supabase/functions/` | Server functions: `ai` (Claude writing), `create-checkout`, `billing-portal`, `stripe-webhook`, `notify` (request and approval emails). |
