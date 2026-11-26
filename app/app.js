@@ -112,10 +112,51 @@ function setNotice(msg) { state.notice = msg || ''; renderNotice(); }
 function field(id, label, control, hint) {
   return h('div', { class: 'col' }, h('label', { for: id, text: label }), control, hint ? h('p', { class: 'muted', text: hint }) : null);
 }
-function busy(on, label) {
+// What the working card shows for each AI task. The steps advance on a timer
+// paced to how long the task usually takes; the last one stays until it's done.
+const WORK = {
+  prefill: { secs: 18, hint: 'This usually takes about 20 seconds.', steps: ['Reading what you gave us', 'Pulling out what you sell and who you serve', 'Drafting your answers'] },
+  polish: { secs: 6, hint: 'Just a few seconds.', steps: ['Reading your notes', 'Tightening the wording', "Making sure nothing's made up"] },
+  research: { secs: 24, hint: 'This usually takes under a minute.', steps: ['Reading their site', 'Looking for the one clear gap', 'Checking the quote against their words', 'Writing three emails in your voice'] },
+  find: { secs: 55, hint: 'This usually takes about a minute.', steps: ['Searching the web for companies like your best clients', 'Checking each one against your ideal client', 'Scoring the best fits', 'Making sure every company is real'] },
+  recommend: { secs: 12, hint: 'This usually takes about 15 seconds.', steps: ['Reading your answers', 'Matching you to the right value asset', 'Checking your answers for gaps'] },
+  asset: { secs: 20, hint: 'This usually takes about 20 seconds.', steps: ['Laying out the page', 'Writing each section', 'Adding a simple next step'] },
+  recap: { secs: 10, hint: 'This usually takes about 10 seconds.', steps: ['Reading your coach notes', 'Writing the recap'] },
+};
+const KICKERS = ['On it.', 'Working on it.', 'Give me a moment.', 'Rolling up my sleeves.'];
+let busyTick = null, busyReveal = null, busyFocus = null;
+function busy(on, label, work) {
   state.busy = on;
+  const box = $('busy'), page = document.querySelector('.wrap');
+  clearInterval(busyTick); clearTimeout(busyReveal);
+  if (!on) {
+    box.classList.remove('on'); box.hidden = true;
+    if (page) page.inert = false;
+    if (busyFocus && document.contains(busyFocus)) busyFocus.focus({ preventScroll: true });
+    busyFocus = null;
+    return;
+  }
+  busyFocus = document.activeElement;
   $('busyText').textContent = label || 'Working...';
-  $('busy').className = on ? 'on' : '';
+  $('busyKicker').textContent = work ? KICKERS[Math.floor(Math.random() * KICKERS.length)] : 'One moment.';
+  const steps = work?.steps || [], list = $('busySteps');
+  list.replaceChildren(...steps.map((t) => h('li', { text: t })));
+  box.classList.toggle('small', !steps.length);
+  const start = Date.now();
+  const tick = () => {
+    const t = (Date.now() - start) / 1000;
+    if (steps.length) {
+      const now = Math.min(steps.length - 1, Math.floor(t / (work.secs / steps.length)));
+      [...list.children].forEach((li, n) => { li.className = n < now ? 'done' : n === now ? 'now' : 'next'; });
+    }
+    $('busyTime').textContent = work ? (t >= 6 ? Math.round(t) + ' seconds so far. ' : '') + work.hint : '';
+  };
+  tick();
+  busyTick = setInterval(tick, 500);
+  box.hidden = false;
+  if (page) page.inert = true;
+  // Quick saves finish before the card would even show, so it waits a beat; AI work shows at once.
+  busyReveal = setTimeout(() => box.classList.add('on'), work ? 10 : 300);
 }
 function queued(key, fn) {
   const p = (queues[key] || Promise.resolve()).then(fn, fn);
@@ -221,7 +262,7 @@ async function invoke(name, body) {
 }
 async function ask(label, task, data, opts = {}) {
   if (state.busy) return null;
-  busy(true, label + (opts.wait || ' This can take up to a minute.'));
+  busy(true, label, WORK[task]);
   try {
     const out = await invoke('ai', { task, data });
     return out?.result ?? null;
@@ -252,7 +293,6 @@ async function recommendAsset() {
 async function prefillFromSite(w, url, notes) {
   const label = url ? 'Reading your website' + (notes ? ' and your notes' : '') + ' and drafting your answers.' : 'Drafting your answers from your notes.';
   const r = await ask(label, 'prefill', { url, notes }, {
-    wait: ' This takes about 20 seconds.',
     fix: (e) => (e.code === 'site_unreadable' ? e.message.replace(/ Paste the page text instead\.$/, '') + ' Skip this step and type your answers instead.' : e.message),
   });
   if (!r) return false;
@@ -281,7 +321,7 @@ async function researchProspect(p) {
 }
 async function findBestFits() {
   const w = ws(); if (!w) return;
-  const r = await ask('Searching the web for companies that fit your ideal client.', 'find', { workspaceId: w.id }, { wait: ' This takes about a minute.' });
+  const r = await ask('Finding your best-fit companies.', 'find', { workspaceId: w.id });
   if (!r) return;
   const fresh = (r.added || []).filter((x) => x.workspace_id === w.id && !state.prospects.some((p) => p.id === x.id));
   state.prospects = [...fresh, ...state.prospects];
@@ -649,7 +689,7 @@ async function improveAnswer(w, k) {
   const i = w.intake, st = state.setup;
   saveWs(w, { intake: { ...i } });
   const { voice, _drafted, ...context } = i; // keep the request small
-  const r = await ask(str(i[k]).trim() ? 'Improving your answer.' : 'Suggesting an answer.', 'polish', { field: k, draft: str(i[k]), intake: context }, { wait: ' Just a few seconds.' });
+  const r = await ask(str(i[k]).trim() ? 'Improving your answer.' : 'Suggesting an answer.', 'polish', { field: k, draft: str(i[k]), intake: context });
   if (!r) return;
   st.suggest = { k, ...r }; st.nudge = null;
   render();

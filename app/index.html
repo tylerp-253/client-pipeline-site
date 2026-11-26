@@ -86,8 +86,51 @@ th{font-family:var(--display);font-stretch:80%;font-size:12px;letter-spacing:.04
 ul.plain{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
 .check{display:flex;gap:10px;align-items:center;font-weight:500;min-height:36px}
 .check input{width:20px;height:20px}
-#busy{position:fixed;left:0;right:0;bottom:0;background:var(--ink);color:#fff;padding:12px 16px;display:none;gap:12px;align-items:center;justify-content:center;font-weight:600;z-index:5}
-#busy.on{display:flex}
+/* The working card: a little file clerk reads, writes and highlights while the AI works. */
+#busy{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:20px;background:rgba(244,246,240,.86);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);opacity:0;transition:opacity .18s ease}
+#busy[hidden]{display:none}
+#busy.on{opacity:1}
+.busy-card{position:relative;width:100%;max-width:400px;background:var(--sheet);border:1.5px solid var(--ink);box-shadow:7px 7px 0 rgba(16,38,29,.14);padding:22px 22px 20px;display:flex;flex-direction:column;gap:10px;transform:translateY(6px) rotate(-.4deg);transition:transform .22s ease}
+#busy.on .busy-card{transform:none}
+.busy-card::before{content:"";position:absolute;left:22px;right:22px;top:-1.5px;height:5px;background:var(--green)}
+.busy-kicker{font-family:var(--hand);color:var(--pencil);font-size:19px;line-height:1.1;margin:0}
+.busy-title{font-family:var(--display);font-weight:800;font-size:21px;line-height:1.2;margin:0;text-wrap:balance}
+.bot{width:168px;height:126px;align-self:center;margin:2px 0 4px;overflow:visible}
+.bot .ln{fill:none;stroke:var(--ink);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.bot .head{fill:var(--sheet)}
+.bot .card{fill:var(--manila)}
+.bot .rule{stroke:#C9B77E;stroke-width:1.5}
+.bot .write{fill:none;stroke:var(--green);stroke-width:3.5;stroke-linecap:round;stroke-dasharray:46;stroke-dashoffset:46;animation:bot-write 3.6s ease-in-out infinite}
+.bot .write.w2{animation-delay:.6s}
+.bot .write.w3{animation-delay:1.2s}
+.bot .hl{fill:var(--mark);transform-box:fill-box;transform-origin:left center;transform:scaleX(0);animation:bot-mark 3.6s ease-in-out infinite;animation-delay:1.8s}
+.bot .eyes{animation:bot-read 3.6s ease-in-out infinite}
+.bot .eye{fill:var(--ink);transform-box:fill-box;transform-origin:center;animation:bot-blink 4.8s infinite}
+.bot .light{fill:var(--green);animation:bot-pulse 1.2s ease-in-out infinite}
+.bot .arm{transform-box:fill-box;transform-origin:left center;animation:bot-arm 1.2s ease-in-out infinite}
+@keyframes bot-write{0%{stroke-dashoffset:46}30%{stroke-dashoffset:0}80%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}
+@keyframes bot-mark{0%,10%{transform:scaleX(0)}35%,80%{transform:scaleX(1);opacity:.85}100%{transform:scaleX(1);opacity:0}}
+@keyframes bot-read{0%,100%{transform:translateX(-2px)}50%{transform:translateX(4px)}}
+@keyframes bot-blink{0%,46%,50%,100%{transform:scaleY(1)}48%{transform:scaleY(.1)}}
+@keyframes bot-pulse{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes bot-arm{0%,100%{transform:rotate(0)}50%{transform:rotate(-6deg)}}
+.busy-steps{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column;gap:7px;font-size:15px}
+.busy-steps li{display:flex;gap:10px;align-items:flex-start;color:var(--muted);transition:color .2s}
+.busy-steps li::before{content:"";flex:none;width:14px;height:14px;margin-top:4px;border:1.5px solid var(--rule);border-radius:50%;background:var(--sheet)}
+.busy-steps li.done{color:var(--ink)}
+.busy-steps li.done::before{border:0;border-radius:0;width:6px;height:11px;margin:3px 6px 0 4px;border-right:2.5px solid var(--green);border-bottom:2.5px solid var(--green);transform:rotate(45deg)}
+.busy-steps li.now{color:var(--ink);font-weight:600}
+.busy-steps li.now::before{border-color:var(--green);background:var(--green);animation:bot-pulse 1.2s ease-in-out infinite}
+.busy-steps li.next{opacity:.55}
+.busy-time{font-size:13px;color:var(--muted);min-height:1.2em;margin:0}
+#busy.small .busy-steps,#busy.small .busy-time{display:none}
+#busy.small .bot{width:120px;height:90px}
+@media (prefers-reduced-motion: reduce){
+  #busy,.busy-card{transition:none}
+  .bot .write,.bot .hl,.bot .eyes,.bot .eye,.bot .light,.bot .arm,.busy-steps li.now::before{animation:none}
+  .bot .write{stroke-dashoffset:0}
+  .bot .hl{transform:scaleX(1);opacity:.85}
+}
 details.add>summary{cursor:pointer;font-weight:700;list-style:none;display:flex;align-items:center;gap:8px;min-height:32px}
 details.add>summary::before{content:"+";font-family:var(--display);font-weight:800;font-size:22px;color:var(--green)}
 details.add[open]>summary::before{content:"\2212"}
@@ -136,7 +179,32 @@ input[type=file]{font:inherit;max-width:100%}
   <div id="notice" aria-live="polite"></div>
   <main id="main"><div class="sheet"><p>Loading...</p></div></main>
 </div>
-<div id="busy" role="status"><span id="busyText">Working...</span></div>
+<div id="busy" hidden>
+  <div class="busy-card" role="status" aria-live="polite">
+    <svg class="bot" viewBox="0 0 168 126" aria-hidden="true" focusable="false">
+      <!-- the clerk -->
+      <line class="ln" x1="40" y1="30" x2="40" y2="15"/>
+      <circle class="light" cx="40" cy="11" r="5"/>
+      <rect class="ln head" x="10" y="30" width="60" height="48" rx="11"/>
+      <g class="eyes"><circle class="eye" cx="30" cy="51" r="5"/><circle class="eye" cx="51" cy="51" r="5"/></g>
+      <path class="ln" d="M31 65 q9 6 19 0"/>
+      <rect class="ln head" x="22" y="84" width="36" height="30" rx="6"/>
+      <line class="ln" x1="40" y1="78" x2="40" y2="84"/>
+      <path class="ln arm" d="M58 96 L84 90"/>
+      <!-- the prospect card it is working on -->
+      <g transform="rotate(-4 124 82)">
+        <rect class="ln card" x="86" y="50" width="76" height="62" rx="2"/>
+        <line class="rule" x1="94" y1="68" x2="154" y2="68"/><line class="rule" x1="94" y1="82" x2="154" y2="82"/><line class="rule" x1="94" y1="96" x2="154" y2="96"/>
+        <rect class="hl" x="93" y="75" width="50" height="10"/>
+        <path class="write" d="M96 65 h46"/><path class="write w2" d="M96 79 h46"/><path class="write w3" d="M96 93 h34"/>
+      </g>
+    </svg>
+    <p class="busy-kicker" id="busyKicker">On it.</p>
+    <p class="busy-title" id="busyText">Working...</p>
+    <ul class="busy-steps" id="busySteps"></ul>
+    <p class="busy-time" id="busyTime"></p>
+  </div>
+</div>
 <script src="config.js"></script>
 <script type="module" src="app.js"></script>
 </body>
