@@ -9,6 +9,7 @@
 //   STRIPE_PRICE_COACHING  required, the price ID of the $1,500/month plan
 //   APP_URL                required, the app's address, e.g. https://you.github.io/client-pipeline-site/app/
 //   ALLOWED_ORIGIN         optional, defaults to *
+//   STRIPE_AUTOMATIC_TAX   optional, "off" turns Stripe Tax off in checkout (default on)
 //
 // Deploy with JWT verification turned OFF: this function checks the
 // signed-in user itself.
@@ -146,12 +147,22 @@ export async function handler(req: Request): Promise<Response> {
 
     const back = appUrl.split('#')[0];
     const join = back.includes('?') ? '&' : '?';
+    // Stripe Tax is on unless STRIPE_AUTOMATIC_TAX is set to "off". It needs a
+    // billing address to work out where the customer is, and it saves that
+    // address (and the business name) back to the Stripe customer.
+    const taxOn = (Deno.env.get('STRIPE_AUTOMATIC_TAX') ?? 'on').toLowerCase() !== 'off';
     const session = await stripe('checkout/sessions', {
       mode: 'subscription',
       customer,
       client_reference_id: user.id,
       line_items: { 0: { price, quantity: 1 } },
       allow_promotion_codes: 'true',
+      ...(taxOn ? {
+        automatic_tax: { enabled: 'true' },
+        billing_address_collection: 'required',
+        customer_update: { address: 'auto', name: 'auto' },
+        tax_id_collection: { enabled: 'true' },
+      } : {}),
       metadata: { user_id: user.id, plan },
       subscription_data: { metadata: { user_id: user.id, plan } },
       success_url: `${back}${join}checkout=success#billing`,

@@ -87,14 +87,15 @@ Approving someone directly in SQL doesn't send the welcome email; approve from t
 
 Keep the **Test mode** switch on for all of this.
 
-1. **Product catalog > Add product**, twice:
-   - "Client Pipeline: The app", recurring, **$300 per month**
-   - "Client Pipeline: App + coaching", recurring, **$1,500 per month**
+1. **Settings > Tax:** add your head office address. Checkout turns on Stripe Tax, and it won't open until this is saved. Stripe Tax only collects in places where you add a **registration**, so add one for each state or country where you're registered to collect.
+2. **Product catalog > Add product**, twice. Prices are tax exclusive (tax is added on top):
+   - "Client Pipeline: The app", recurring, **$300 per month**, tax code `txcd_10103001` (SaaS, business use)
+   - "Client Pipeline: App + coaching", recurring, **$1,500 per month**, tax code `txcd_20060045` (Training services, live virtual)
 
    Open each product and copy its **price ID** (starts `price_`).
-2. **Developers > API keys:** copy the **Secret key** (`sk_test_...`).
-3. **Settings > Billing > Customer portal:** activate it and allow customers to update payment methods, cancel, and switch between the two products.
-4. **Developers > Webhooks > Add endpoint:**
+3. **Developers > API keys:** copy the **Secret key** (`sk_test_...`).
+4. **Settings > Billing > Customer portal:** activate it and allow customers to update payment methods, cancel, and switch between the two products.
+5. **Developers > Webhooks > Add endpoint:**
    - URL: `https://YOUR-PROJECT-REF.supabase.co/functions/v1/stripe-webhook`
    - Events: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`
    - After saving, copy the **Signing secret** (`whsec_...`).
