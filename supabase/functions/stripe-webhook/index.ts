@@ -104,6 +104,10 @@ export async function handler(req: Request): Promise<Response> {
   try {
     const event = JSON.parse(payload);
     const obj = event?.data?.object ?? {};
+    // Stripe sends several events at once after a checkout and doesn't promise
+    // the order. Each event's copy of the subscription is a snapshot from when
+    // it was created, so an old "incomplete" one can land after "active". We
+    // always look up the subscription as it is now, so the order doesn't matter.
     switch (event.type) {
       case 'checkout.session.completed':
         if (obj.mode === 'subscription' && obj.subscription) {
@@ -114,7 +118,7 @@ export async function handler(req: Request): Promise<Response> {
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted':
-        await syncSubscription(obj);
+        if (obj.id) await syncSubscription(await getSubscription(obj.id));
         break;
       default:
         break;
