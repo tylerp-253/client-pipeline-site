@@ -249,21 +249,22 @@ async function recommendAsset() {
   await saveWs(w, { asset: { id: r.assetId, why: r.why, lookFor: r.lookFor, openingAngle: r.openingAngle, runnerUpId: r.runnerUpId, runnerUpWhy: r.runnerUpWhy, sharpen: r.sharpen || [] } });
   render();
 }
-async function prefillFromSite(w, url) {
-  const r = await ask('Reading your website and drafting your answers.', 'prefill', { url }, {
+async function prefillFromSite(w, url, notes) {
+  const label = url ? 'Reading your website' + (notes ? ' and your notes' : '') + ' and drafting your answers.' : 'Drafting your answers from your notes.';
+  const r = await ask(label, 'prefill', { url, notes }, {
     wait: ' This takes about 20 seconds.',
     fix: (e) => (e.code === 'site_unreadable' ? e.message.replace(/ Paste the page text instead\.$/, '') + ' Skip this step and type your answers instead.' : e.message),
   });
   if (!r) return false;
-  const intake = { ...(w.intake || {}), website: r.site?.url || url };
+  const intake = { ...(w.intake || {}), website: r.site?.url || url || str(w.intake?.website), brainDump: str(notes).slice(0, 8000) };
   const drafted = { ...(intake._drafted || {}) };
   for (const [k, v] of Object.entries(r.answers || {})) {
     if (v && !str(intake[k]).trim()) { intake[k] = v; drafted[k] = true; }
   }
   intake._drafted = drafted;
   await saveWs(w, { intake });
-  setNotice('');
-  return true;
+  return r.warning || true; // a warning to show once the next screen is up
+
 }
 async function researchProspect(p) {
   const w = ws(); if (!w) return;
@@ -563,7 +564,7 @@ function firstSetupStep(w) {
   return n === -1 ? 'plan' : n;
 }
 function goStep(step, extra) {
-  state.setup = { ...state.setup, step, nudge: null, focus: true, ...(extra || {}) };
+  state.setup = { ...state.setup, step, nudge: null, suggest: null, focus: true, ...(extra || {}) };
   state.notice = '';
   render();
   window.scrollTo(0, 0);
@@ -612,29 +613,72 @@ function viewSetup(w) {
   return frame;
 }
 function viewSetupStart(w) {
-  const i = w.intake;
+  const i = w.intake, back = state.setup.returnTo === 'summary';
   const url = h('input', { type: 'url', id: 'site-url', value: str(i.website), placeholder: 'youragency.com', autocomplete: 'url' });
-  const read = async () => {
-    const v = url.value.trim();
-    if (!domainOf(v)) { url.focus(); setNotice('Enter your website address, like youragency.com.'); return; }
-    if (await prefillFromSite(w, v)) goStep(0);
+  const notes = h('textarea', { id: 'brain-dump', class: 'big', value: back ? '' : str(i.brainDump),
+    placeholder: "Who you help, what you sell and what it costs, the clients you love and the ones you don't, what you spot first when you look at a prospect. Messy is fine." });
+  const draft = async () => {
+    const v = url.value.trim(), n = notes.value.trim();
+    if (v && !domainOf(v)) { url.focus(); setNotice('That website address does not look right. Try something like youragency.com.'); return; }
+    if (!v && n.length < 20) { url.focus(); setNotice('Add your website, or a few sentences about your agency, and the app drafts your answers.'); return; }
+    const done = await prefillFromSite(w, v, n);
+    if (!done) return;
+    goStep(back ? null : 0, back ? { returnTo: null } : {});
+    if (typeof done === 'string') setNotice(done);
   };
-  url.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); read(); } });
-  const back = state.setup.returnTo === 'summary';
+  url.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); draft(); } });
   return h('div', { class: 'sheet wizard' },
-    h('p', { class: 'hand', text: back ? 'Your website' : "Let's get you set up." }),
-    h('h1', { class: 'wiz', text: back ? 'Read your website again' : 'Start with your website' }),
+    h('p', { class: 'hand', text: back ? 'Draft again' : "Let's get you set up." }),
+    h('h1', { class: 'wiz', text: back ? 'Draft your answers again' : 'Start with your website, your words, or both' }),
     h('p', { text: back ? 'The app fills in any answers that are still empty. It never overwrites what you wrote.'
-      : "The app reads it and drafts your answers, so you're checking instead of writing. Seven short steps, about five minutes." }),
+      : "The app reads them and drafts every answer, so you're checking instead of writing. Seven short steps, about five minutes." }),
     field('site-url', 'Your website', url),
+    field('brain-dump', 'Or just tell us about your agency (optional)', notes,
+      'Type it, or tap the microphone on your phone keyboard and talk. Two minutes of rambling beats twenty minutes of forms.'),
     h('div', { class: 'row' },
-      h('button', { type: 'button', class: 'primary', onclick: read }, 'Read my site'),
-      back ? h('button', { type: 'button', onclick: () => goStep(null) }, 'Back to setup')
-        : h('button', { type: 'button', class: 'quiet', onclick: () => { if (url.value.trim()) saveWs(w, { intake: { ...w.intake, website: url.value.trim() } }); goStep(0); } }, "Skip, I'll type my answers")));
+      h('button', { type: 'button', class: 'primary', onclick: draft }, 'Draft my answers'),
+      back ? h('button', { type: 'button', onclick: () => goStep(null, { returnTo: null }) }, 'Back to setup')
+        : h('button', { type: 'button', class: 'quiet', onclick: () => {
+          const v = url.value.trim(), n = notes.value.trim();
+          if (v || n) saveWs(w, { intake: { ...w.intake, ...(v ? { website: v } : {}), ...(n ? { brainDump: n.slice(0, 8000) } : {}) } });
+          goStep(0);
+        } }, "Skip, I'll type my answers")));
+}
+const POLISH = ['sells', 'ideal', 'notFit', 'notice', 'giveaway', 'proof'];
+async function improveAnswer(w, k) {
+  const i = w.intake, st = state.setup;
+  saveWs(w, { intake: { ...i } });
+  const { voice, _drafted, ...context } = i; // keep the request small
+  const r = await ask(str(i[k]).trim() ? 'Improving your answer.' : 'Suggesting an answer.', 'polish', { field: k, draft: str(i[k]), intake: context }, { wait: ' Just a few seconds.' });
+  if (!r) return;
+  st.suggest = { k, ...r }; st.nudge = null;
+  render();
+}
+function suggestionCard(w, k, sg) {
+  const i = w.intake, st = state.setup;
+  const use = () => {
+    i[k] = sg.answer;
+    if (i._drafted?.[k]) { i._drafted = { ...i._drafted }; delete i._drafted[k]; }
+    st.suggest = null;
+    st.nudged[k] = str(sg.answer).trim(); // no second nudge on an answer we just wrote together
+    st.nudge = sg.missing ? { k, msg: sg.missing + ' Add it above if you can.' } : null;
+    saveWs(w, { intake: { ...i } });
+    render();
+  };
+  return h('div', { class: 'suggest', role: 'status', 'aria-live': 'polite' },
+    sg.answer ? h('p', { class: 'label', text: 'Suggested answer' }) : null,
+    sg.answer ? h('p', { class: 'suggest-text', text: sg.answer }) : null,
+    sg.answer && sg.note ? h('p', { class: 'muted', text: sg.note }) : null,
+    sg.missing ? h('div', { class: 'nudge' }, h('b', { text: 'One question: ' }), sg.missing,
+      sg.answer ? '' : ' Answer it in your own words above, then press the button again.') : null,
+    h('div', { class: 'row' },
+      sg.answer ? h('button', { type: 'button', class: 'primary', onclick: use }, 'Use this') : null,
+      h('button', { type: 'button', class: 'quiet', onclick: () => { st.suggest = null; render(); } }, sg.answer ? 'Keep mine' : 'Close')));
 }
 function viewSetupQuestion(w, n) {
   const step = STEPS[n], i = w.intake, st = state.setup, guided = w.mode === 'guided';
   const drafted = i._drafted || {};
+  const improve = (k) => improveAnswer(w, k);
   const box = h('div', { class: 'sheet wizard' },
     h('p', { class: 'label', text: 'Step ' + (n + 1) + ' of ' + STEPS.length }),
     h('h1', { class: 'wiz', text: step.title }),
@@ -661,9 +705,10 @@ function viewSetupQuestion(w, n) {
   step.keys.forEach((k) => {
     const f = FIELD[k], id = 'f-' + k;
     const c = f.line ? h('input', { type: 'text', id, value: str(i[k]), placeholder: f.ph || '' })
-      : h('textarea', { id, class: f.big ? 'big' : '', value: str(i[k]), placeholder: f.ph || '' });
+      : h('textarea', { id, class: f.big ? 'big' : '', value: str(i[k]), placeholder: POLISH.includes(k) ? 'Rough notes are fine. Type or talk, then press Improve with AI.' : (f.ph || '') });
     c.addEventListener('input', () => {
       i[k] = c.value;
+      const ai = $('ai-' + k); if (ai) ai.textContent = c.value.trim() ? 'Improve with AI' : 'Suggest an answer';
       if (drafted[k]) { delete drafted[k]; i._drafted = { ...drafted }; const b = $('drafted-' + k); if (b) b.remove(); }
     });
     c.addEventListener('change', () => saveWs(w, { intake: { ...i } }));
@@ -671,8 +716,15 @@ function viewSetupQuestion(w, n) {
     const label = step.keys.length > 1 ? f.label : (step.need.includes(k) ? 'Your answer' : 'Your answer (optional)');
     box.appendChild(h('div', { class: 'col' },
       h('label', { for: id, text: label }),
-      drafted[k] ? h('p', { class: 'badge', id: 'drafted-' + k, text: 'Drafted from your website. Make it yours.' }) : null,
+      drafted[k] ? h('p', { class: 'badge', id: 'drafted-' + k, text: 'Drafted for you. Make it yours.' }) : null,
       c));
+    if (POLISH.includes(k)) {
+      const has = !!str(i[k]).trim(), sg = st.suggest && st.suggest.k === k ? st.suggest : null;
+      box.appendChild(h('div', { class: 'row' },
+        h('button', { type: 'button', class: 'ai', id: 'ai-' + k, onclick: () => improve(k) }, has ? 'Improve with AI' : 'Suggest an answer'),
+        h('span', { class: 'muted', text: has ? 'Rough notes are fine. It tidies them up and keeps your facts.' : "Drafts one from what you've told us so far." })));
+      if (sg) box.appendChild(suggestionCard(w, k, sg));
+    }
     if (st.nudge && st.nudge.k === k) box.appendChild(h('div', { class: 'nudge', role: 'status' }, h('b', { text: 'Quick thought: ' }), st.nudge.msg));
     if (guided && f.coach) box.appendChild(h('div', { class: 'coach' }, h('b', { text: 'Coach: ' }), f.coach));
   });

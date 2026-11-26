@@ -5,8 +5,9 @@
 // else. Every call checks that the person is signed in, approved and paid
 // up (or comped), and counts against a daily limit.
 //
-// Tasks: recommend (value asset + answers to sharpen), prefill (reads the
-// agency's site and drafts setup answers), research (finding + 3 emails; reads
+// Tasks: recommend (value asset + answers to sharpen), prefill (drafts setup
+// answers from the agency's site and/or the owner's notes), polish (turns rough
+// notes for one setup question into a clear answer), research (finding + 3 emails; reads
 // the prospect's site when nothing was pasted), asset, recap, and find (web
 // search for best-fit prospects, at most 25 per workspace in any 7 days).
 //
@@ -107,6 +108,16 @@ const WEEK_TARGET = 15;
 const SUGGEST_WEEKLY = 25;   // most suggested prospects per workspace in any 7 days
 const SUGGEST_BATCH = 8;     // most found in one search, to stay well inside the time limit
 const INTAKE_KEYS = ['agency', 'sells', 'ideal', 'notFit', 'notice', 'giveaway'];
+const PREFILL_KEYS = ['agency', 'sender', 'sells', 'ideal', 'notFit', 'notice', 'giveaway'];
+// What a strong answer to each setup question covers, for "Improve with AI".
+const QUESTIONS: Record<string, { q: string; covers: string }> = {
+  sells: { q: 'What do you sell, and what does it cost?', covers: 'one core offer (the one they would sell all day) and its real price or starting price' },
+  ideal: { q: 'Who is your ideal client?', covers: 'industry, company size, location, and the role they sell to' },
+  notFit: { q: "Who don't you want?", covers: 'the kinds of clients they turn down or regret taking' },
+  notice: { q: "When you look at a prospect, what's the first thing you notice that's wrong?", covers: 'one specific, visible problem, in words they would say out loud on a call' },
+  giveaway: { q: 'What would you happily give away on a first call?', covers: 'one quick, genuinely useful insight they can share for free' },
+  proof: { q: 'Proof you can point to', covers: 'real, specific results they can back up' },
+};
 
 const s = (v: unknown, max = 2000): string => (v == null ? '' : String(v)).slice(0, max);
 const tag = (name: string, body: string): string => `<${name}>\n${body.trim()}\n</${name}>\n`;
@@ -273,14 +284,33 @@ function buildPrompt(task: string, d: Any): { prompt: string; json: boolean } | 
       'Reply with only a JSON object in this shape:\n' +
       '{"assetId":"one id from the menu","why":"two sentences addressed to the agency as you","lookFor":["three specific things to look for in each prospect\'s material"],"openingAngle":"one sentence on how the first email should open","runnerUpId":"another id","runnerUpWhy":"one sentence","sharpen":[{"field":"sells|ideal|notFit|notice|giveaway","question":"one short question"}]}\n' + STYLE };
   }
-  if (task === 'prefill') {
+  if (task === 'polish') {
+    const k = String(d.field), q = QUESTIONS[k];
+    const draft = s(d.draft, 4000).trim();
     return { json: true, prompt:
-      'A marketing agency is setting up an outreach program. Below is the text of its own website. Draft its answers to the setup questions from the site, so the owner only has to check and adjust them.\n\n' +
-      tag('agency_website', s(d.material, 16000)) +
-      '\nQuestions:\n- agency: the agency\'s name.\n- sells: its core offer in one or two sentences. Include a price only if the site states one.\n- ideal: who it serves: industry, size, location and the role it sells to, as far as the site shows.\n' +
-      '- notFit: who it does not work with, only if the site says so.\n- notice: the first problem it would spot when looking at a prospect, based on what it sells.\n- giveaway: a quick, useful insight it could share on a first call, based on its services.\n\n' +
-      'Rules: write each answer in the agency\'s voice ("We..."), under 45 words. Use only what the site supports; leave an answer as an empty string rather than guess. Never invent prices, clients or results.\n' + STYLE +
-      '\nReply with only a JSON object in this shape:\n{"agency":"","sells":"","ideal":"","notFit":"","notice":"","giveaway":""}' };
+      'A busy marketing agency owner is answering one setup question for an outreach tool. ' +
+      (draft ? 'Turn their rough notes into a clear, specific answer.' : 'They have not answered yet. Suggest an answer from what they told you elsewhere.') + '\n\n' +
+      `Question: ${q.q}\nA strong answer covers: ${q.covers}.\n\n` +
+      tag('their_notes', draft || '(empty)') + agencyBlock(d.intake) +
+      (s(d.intake?.brainDump).trim() ? tag('earlier_notes', s(d.intake.brainDump, 4000)) : '') +
+      '\nRules:\n- Keep every fact they gave. Use their own words where they are good.\n- Write as the agency ("We..." or "I..."), one to three sentences, under 50 words.\n' +
+      '- Never invent prices, numbers, client names or results. If something the answer needs is missing, leave it out and ask for it in "missing" as one short, friendly question.\n' +
+      (draft ? '' : '- If the other answers do not give you enough to suggest something real, leave "answer" empty and ask in "missing".\n') +
+      '- "note" is one short sentence telling them what you changed or what you based it on.\n' + STYLE +
+      '\nReply with only a JSON object in this shape:\n{"answer":"","note":"","missing":""}' };
+  }
+  if (task === 'prefill') {
+    const site = s(d.material, 16000).trim(), notes = s(d.notes, 8000).trim();
+    return { json: true, prompt:
+      'A marketing agency is setting up an outreach program. Below is ' +
+      (site && notes ? "the text of its website and the owner's own notes" : site ? 'the text of its own website' : "the owner's own notes, written quickly") +
+      '. Draft its answers to the setup questions, so the owner only has to check and adjust them.' +
+      (notes ? " When the notes and the website disagree, trust the owner's notes." : '') + '\n\n' +
+      (site ? tag('agency_website', site) : '') + (notes ? tag('owner_notes', notes) : '') +
+      '\nQuestions:\n- agency: the agency\'s name.\n- sender: the owner\'s first name, only if stated.\n- sells: its core offer in one or two sentences. Include a price only if one is stated.\n- ideal: who it serves: industry, size, location and the role it sells to, as far as the material shows.\n' +
+      '- notFit: who it does not work with, only if stated.\n- notice: the first problem it would spot when looking at a prospect, based on what it sells.\n- giveaway: a quick, useful insight it could share on a first call, based on its services.\n\n' +
+      'Rules: write each answer in the agency\'s voice ("We..."), under 45 words. Use only what the material supports; leave an answer as an empty string rather than guess. Never invent prices, clients or results.\n' + STYLE +
+      '\nReply with only a JSON object in this shape:\n{"agency":"","sender":"","sells":"","ideal":"","notFit":"","notice":"","giveaway":""}' };
   }
   if (task === 'find') {
     const i = d.intake ?? {};
@@ -365,8 +395,13 @@ function shape(task: string, r: Any): Any {
   }
   if (task === 'prefill') {
     const out: Record<string, string> = {};
-    for (const k of INTAKE_KEYS) out[k] = s(r[k], k === 'agency' ? 120 : 600).trim();
-    return INTAKE_KEYS.some((k) => out[k]) ? out : null;
+    for (const k of PREFILL_KEYS) out[k] = s(r[k], k === 'agency' ? 120 : k === 'sender' ? 60 : 600).trim();
+    return PREFILL_KEYS.some((k) => out[k]) ? out : null;
+  }
+  if (task === 'polish') {
+    const answer = s(r.answer, 700).trim(), missing = s(r.missing, 300).trim();
+    if (!answer && !missing) return null;
+    return { answer, note: s(r.note, 300).trim(), missing };
   }
   if (task === 'find') {
     if (!Array.isArray(r)) return Array.isArray(r?.companies) ? shape(task, r.companies) : null;
@@ -538,14 +573,24 @@ export async function handler(req: Request): Promise<Response> {
     const task = String(body?.task ?? '');
     const data: Any = body?.data ?? {};
     if (task === 'find') return await findProspects(user.id, s(data.workspaceId, 64));
-    if (!['recommend', 'research', 'asset', 'recap', 'prefill'].includes(task)) return fail(400, 'unknown_task', 'Unknown task.');
+    if (!['recommend', 'research', 'asset', 'recap', 'prefill', 'polish'].includes(task)) return fail(400, 'unknown_task', 'Unknown task.');
+    if (task === 'polish' && !QUESTIONS[String(data.field)]) return fail(400, 'bad_request', 'That question cannot be improved here.');
 
     // Read the website ourselves when there is no pasted material.
     let site: Site | null = null;
+    let siteProblem = '';
     if (task === 'prefill') {
-      if (!safeUrl(data.url)) return fail(400, 'bad_url', 'Enter your website address, like youragency.com.');
-      site = await readSite(data.url);
-      data.material = siteMaterial(site);
+      const notes = s(data.notes, 8000).trim();
+      const hasUrl = !!s(data.url).trim();
+      if (!hasUrl && notes.length < 20) return fail(400, 'bad_url', 'Enter your website, or tell us a little about your agency.');
+      if (hasUrl && !safeUrl(data.url)) return fail(400, 'bad_url', 'Enter your website address, like youragency.com.');
+      if (hasUrl) {
+        try { site = await readSite(data.url); data.material = siteMaterial(site); } catch (e) {
+          // With notes to work from, carry on and say what happened with the site.
+          if (!notes || (e as { code?: string }).code !== 'site_unreadable') throw e;
+          siteProblem = `We couldn't read your website (${(e as Error).message.replace(/\.$/, '').toLowerCase()}), so these answers come from your notes only.`;
+        }
+      }
     }
     if (task === 'research' && !s(data.prospect?.material).trim()) {
       if (!safeUrl(data.prospect?.url)) return fail(400, 'no_material', "Add their website or paste the prospect's material first.");
@@ -561,12 +606,13 @@ export async function handler(req: Request): Promise<Response> {
     if (!built.json) return reply(200, { result: { text }, truncated });
     let result = shape(task, parseJson(text));
     if (!result) {
-      if (task === 'prefill') return fail(422, 'site_unreadable', "We read your site but couldn't draft answers from it. Type them in instead.");
+      if (task === 'prefill') return fail(422, 'site_unreadable', "We couldn't draft answers from that. Type them in instead.");
+      if (task === 'polish') return fail(502, 'bad_output', "We couldn't improve that one. Try adding a few more words.");
       return fail(502, 'bad_output', 'The answer came back in the wrong shape. Try again.');
     }
     // Hand back what we read, so the app can save it with the prospect.
     if (site && task === 'research') result = { ...result, material: data.prospect.material, siteTitle: site.title };
-    if (site && task === 'prefill') result = { answers: result, site: { url: site.url, title: site.title } };
+    if (task === 'prefill') result = { answers: result, site: site ? { url: site.url, title: site.title } : null, warning: siteProblem };
     return reply(200, { result, truncated });
   } catch (e) {
     const code = (e as { code?: string }).code;

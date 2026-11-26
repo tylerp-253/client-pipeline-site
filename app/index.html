@@ -99,7 +99,13 @@ details[open]>summary{margin-bottom:8px}
 .wizard{gap:16px;padding:28px 24px}
 h1.wiz{font-size:clamp(24px,4.4vw,32px);max-width:24ch}
 .wizard textarea{min-height:110px}
+#brain-dump{min-height:180px}
 .badge{align-self:flex-start;margin:0;font-size:13px;font-weight:600;color:var(--green-dark);background:var(--band);border:1px dashed var(--green);padding:2px 8px}
+button.ai{border-color:var(--green);color:var(--green-dark);background:var(--sheet)}
+button.ai::before{content:"";width:9px;height:9px;margin-right:8px;background:var(--green);transform:rotate(45deg)}
+.suggest{border:1.5px dashed var(--green);background:var(--band);padding:14px;display:flex;flex-direction:column;gap:10px}
+.suggest .label{margin:0}
+.suggest-text{margin:0;font-size:17px;line-height:1.45;background:var(--sheet);border-left:3px solid var(--green);padding:10px 12px}
 .nudge{background:var(--warn-bg);color:var(--warn-ink);border-left:3px solid #C9A227;padding:10px 12px;font-size:14px}
 .answers{display:flex;flex-direction:column}
 .answer{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--rule)}
